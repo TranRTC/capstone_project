@@ -1,0 +1,19 @@
+# ===== General =====
+.env
+*.log
+*.zip
+
+# ===== Node / React =====
+node_modules/
+dist/
+build/
+
+# ===== .NET / C# =====
+bin/
+obj/
+*.user
+*.suo
+
+# ===== OS =====
+Thumbs.db
+.DS_Store
