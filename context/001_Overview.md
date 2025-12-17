@@ -13,7 +13,7 @@ This capstone project applies knowledge from the Application Development Program
 
 ## Project Description
 The Industrial Equipment Real-Time Monitoring System is a comprehensive solution that:
-- **Monitors** industrial equipment and devices in real-time
+- **Monitors** IoT equipment and devices in real-time
 - **Collects** sensor data, operational metrics, and status information
 - **Visualizes** data through interactive dashboards and charts
 - **Alerts** users to critical events, anomalies, or threshold breaches
@@ -28,10 +28,11 @@ The Industrial Equipment Real-Time Monitoring System is a comprehensive solution
 - **Data Visualization:** Chart.js, D3.js, or similar library
 
 ## Architecture Overview
-- **Backend API:** RESTful API built with ASP.NET Core for data management and business logic
-- **Real-Time Hub:** SignalR hub for bidirectional communication between server and clients
-- **Frontend Application:** React SPA with component-based architecture
-- **Data Layer:** Database for persistent storage of historical data and configurations
+- **Edge Devices:** Microcontrollers (Arduino, ESP modules) and single-board computers (Raspberry Pi) that interface with sensors and send data to the backend via HTTP/MQTT
+- **Backend API:** RESTful API built with ASP.NET Core for request-response operations (device management, historical data queries, CRUD operations)
+- **Data Layer:** SQL Server database for persistent storage of historical data, sensor readings, operational metrics, and configurations
+- **Real-Time Hub:** SignalR hub for server-to-client push communication, streaming live sensor data and instant notifications to connected clients
+- **Frontend Application:** React SPA with component-based architecture, displaying real-time data via SignalR and historical analytics via RESTful API
 
 ## Key Features (Planned)
 1. **Real-Time Data Streaming**
@@ -55,7 +56,7 @@ The Industrial Equipment Real-Time Monitoring System is a comprehensive solution
    - Connection status monitoring
 
 5. **User Interface**
-   - Responsive design for desktop and mobile
+   - Responsive design for desktop (and mobile for the future expansion)
    - Intuitive navigation
    - Role-based access control (if applicable)
 
