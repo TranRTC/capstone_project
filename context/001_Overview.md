@@ -1,10 +1,15 @@
 # Project Overview
 
 ## Project Name
-Web_Based Industrial Equipment Real-Time Monitoring System
+Web-Based IoT Device Real-Time Monitoring System
 
 ## Purpose
-This capstone project is a full-stack web application designed for real-time monitoring of industrial equipment and devices. The system provides live data visualization, alerts, and analytics to help operators and managers track equipment performance, detect anomalies, and maintain optimal operational conditions.
+
+### Application Purpose (Why This System is Needed)
+There is a need for continuous monitoring of equipment/device in industrial, commercial, and agricultural facilities to ensure operational safety, prevent failures, and optimize performance. This web-based solution monitors IoT device status in real-time and stores historical data for trace-back analysis and data-driven decision-making. It enables remote monitoring of distributed IoT devices across multiple locations, serving as a cost-effective alternative to industrial SCADA systems, which are expensive and dependent on specific hardware and software requirements.
+
+### Capstone Project Purpose (Why This Project Exists)
+This capstone project applies knowledge from the Application Development Program (programming languages, databases, software engineering, project management) and hands-on hardware experience (sensors, microcontrollers like Arduino and ESP modules, single-board computers like Raspberry Pi) to solve a real-world problem through technology integration (C# backend, React frontend, RESTful API, SignalR, SQL Server). It demonstrates the application of academic knowledge to practical solutions, serving as evidence of technical expertise for portfolio and professional use.
 
 ## Project Description
 The Industrial Equipment Real-Time Monitoring System is a comprehensive solution that:
@@ -19,8 +24,14 @@ The Industrial Equipment Real-Time Monitoring System is a comprehensive solution
 - **Backend:** C# (ASP.NET Core Web API)
 - **Frontend:** React (with modern UI framework)
 - **Real-Time Communication:** SignalR (for WebSocket-based real-time updates)
-- **Database:** (To be determined - SQL Server/PostgreSQL recommended)
+- **Database:** SQL Server
 - **Data Visualization:** Chart.js, D3.js, or similar library
+
+## Architecture Overview
+- **Backend API:** RESTful API built with ASP.NET Core for data management and business logic
+- **Real-Time Hub:** SignalR hub for bidirectional communication between server and clients
+- **Frontend Application:** React SPA with component-based architecture
+- **Data Layer:** Database for persistent storage of historical data and configurations
 
 ## Key Features (Planned)
 1. **Real-Time Data Streaming**
@@ -47,12 +58,6 @@ The Industrial Equipment Real-Time Monitoring System is a comprehensive solution
    - Responsive design for desktop and mobile
    - Intuitive navigation
    - Role-based access control (if applicable)
-
-## Architecture Overview
-- **Backend API:** RESTful API built with ASP.NET Core for data management and business logic
-- **Real-Time Hub:** SignalR hub for bidirectional communication between server and clients
-- **Frontend Application:** React SPA with component-based architecture
-- **Data Layer:** Database for persistent storage of historical data and configurations
 
 ## Current Status
 - Project repository initialized
@@ -84,10 +89,4 @@ The Industrial Equipment Real-Time Monitoring System is a comprehensive solution
 This file is the main context reference.  
 When starting a new chat or returning after a break, read this first.
 
-## Cursor Desktop Mode Recommendation
-For this capstone project, the following Cursor modes are recommended:
-- **Composer Mode:** Best for complex, multi-file changes (e.g., implementing features across backend and frontend, refactoring, adding new components)
-- **Chat Mode:** Ideal for quick questions, debugging, code explanations, and single-file edits
-- **Inline Edit:** Useful for small, focused changes within a single file
 
-**Most Suitable:** Start with **Composer Mode** for feature development and architecture work, as this project involves coordinating changes across multiple files and layers (API, SignalR, React components, etc.).
