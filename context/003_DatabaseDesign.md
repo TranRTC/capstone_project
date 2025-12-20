@@ -30,7 +30,13 @@ The database design covers:
 
 ## 2. Entity Relationship Diagram (ERD)
 
-### 2.1 Entity Relationships Overview
+### 2.1 ERD Diagram Location
+
+The visual Entity Relationship Diagram (ERD) is maintained in **Lucidchart** and shows the complete database schema with all tables, relationships, and key fields.
+
+**Note:** The ERD diagram is available in the Lucidchart project and should be referenced when implementing the database schema.
+
+### 2.2 Entity Relationships Overview
 
 ```
 Devices (1) ────< (Many) Sensors
