@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Backend API Connection Test</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <div id="results"></div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api/v1';
+        
+        async function testConnection() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="test-result info">Testing connection...</div>';
+            
+            try {
+                // Test 1: Basic connectivity
+                const test1 = document.createElement('div');
+                test1.className = 'test-result info';
+                test1.textContent = 'Test 1: Checking if backend is accessible...';
+                resultsDiv.appendChild(test1);
+                
+                const response = await fetch(`${API_BASE_URL}/devices`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const test2 = document.createElement('div');
+                if (response.ok) {
+                    test2.className = 'test-result success';
+                    test2.textContent = `✓ Test 1 PASSED: Backend is accessible (Status: ${response.status})`;
+                } else {
+                    test2.className = 'test-result error';
+                    test2.textContent = `✗ Test 1 FAILED: Backend returned status ${response.status}`;
+                }
+                resultsDiv.appendChild(test2);
+                
+                // Test 2: Parse response
+                const data = await response.json();
+                const test3 = document.createElement('div');
+                test3.className = 'test-result info';
+                test3.innerHTML = '<strong>Test 2: Response Structure</strong><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                resultsDiv.appendChild(test3);
+                
+                // Test 3: Check data format
+                const test4 = document.createElement('div');
+                if (data.success || data.Success) {
+                    const success = data.success ?? data.Success;
+                    const devices = data.data ?? data.Data ?? [];
+                    test4.className = 'test-result success';
+                    test4.innerHTML = `✓ Test 2 PASSED: Response is valid<br>
+                        Success: ${success}<br>
+                        Devices found: ${Array.isArray(devices) ? devices.length : 'N/A'}<br>
+                        Device data: <pre>${JSON.stringify(devices, null, 2)}</pre>`;
+                } else {
+                    test4.className = 'test-result error';
+                    test4.textContent = '✗ Test 2 FAILED: Response structure is invalid';
+                }
+                resultsDiv.appendChild(test4);
+                
+            } catch (error) {
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'test-result error';
+                errorDiv.innerHTML = `<strong>Connection Error:</strong><br>
+                    ${error.message}<br>
+                    <br>
+                    <strong>Possible causes:</strong><br>
+                    1. Backend is not running<br>
+                    2. Backend is running on a different port<br>
+                    3. CORS is blocking the request<br>
+                    4. Network connectivity issue<br>
+                    <br>
+                    <strong>To fix:</strong><br>
+                    Make sure the backend is running:<br>
+                    <code>cd Backend && dotnet run --project IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj</code>`;
+                resultsDiv.appendChild(errorDiv);
+            }
+        }
+    </script>
+</body>
+</html>
+

@@ -172,3 +172,4 @@ Check: `Backend/IoTMonitoringSystem.API/appsettings.json`
    sqlcmd -S "(localdb)\mssqllocaldb" -d IoTMonitoringDB -Q "SELECT DeviceId, DeviceName, DeviceType, Location, Status, CreatedAt FROM Devices"
    ```
 
+

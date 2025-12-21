@@ -33,7 +33,9 @@ dotnet ef database update --project IoTMonitoringSystem.Infrastructure/IoTMonito
 dotnet run --project IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj
 ```
 
-Backend runs on: http://localhost:5286
+Backend runs on:
+- HTTP: http://localhost:5000
+- HTTPS: https://localhost:5001
 
 ### Frontend Setup
 

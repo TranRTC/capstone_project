@@ -78,6 +78,21 @@ namespace IoTMonitoringSystem.API.Controllers
         [HttpPost]
         public async Task<ActionResult<ApiResponse<DeviceDto>>> CreateDevice([FromBody] CreateDeviceDto dto)
         {
+            // Model validation is automatic with [ApiController] attribute
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values
+                    .SelectMany(v => v.Errors)
+                    .Select(e => e.ErrorMessage)
+                    .ToList();
+                return BadRequest(new ApiResponse<DeviceDto>
+                {
+                    Success = false,
+                    Message = "Validation failed",
+                    Errors = errors
+                });
+            }
+
             try
             {
                 var device = await _deviceService.CreateDeviceAsync(dto);

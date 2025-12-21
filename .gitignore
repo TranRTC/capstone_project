@@ -17,3 +17,9 @@ obj/
 # ===== OS =====
 Thumbs.db
 .DS_Store
+
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+node_modules/

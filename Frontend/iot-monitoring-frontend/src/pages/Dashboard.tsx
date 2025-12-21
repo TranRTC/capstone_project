@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Grid, Paper, Typography, Box, Card, CardContent } from '@mui/material';
+import * as signalR from '@microsoft/signalr';
 import { apiService } from '../services/api';
 import { signalRService } from '../services/signalRService';
 import { DeviceList, Alert, SensorReading } from '../types';
+import MqttStatusIndicator from '../components/common/MqttStatusIndicator';
 
 const Dashboard: React.FC = () => {
   const [devices, setDevices] = useState<DeviceList[]>([]);
@@ -27,33 +29,51 @@ const Dashboard: React.FC = () => {
       ]);
       setDevices(devicesData);
       setActiveAlerts(alertsData);
-    } catch (error) {
-      console.error('Error loading data:', error);
+    } catch (error: any) {
+      console.error('Error loading dashboard data:', error.message || error);
+      // Set empty arrays on error to prevent UI issues
+      setDevices([]);
+      setActiveAlerts([]);
     }
   };
 
   const connectSignalR = async () => {
     try {
       await signalRService.start();
-      setIsConnected(true);
+      
+      // Wait a moment to ensure connection is stable
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const state = signalRService.getConnectionState();
+      if (state === signalR.HubConnectionState.Connected) {
+        setIsConnected(true);
 
-      await signalRService.subscribeToAllDevices();
-      await signalRService.subscribeToAlerts();
+        await signalRService.subscribeToAllDevices();
+        await signalRService.subscribeToAlerts();
 
-      signalRService.onSensorReading((reading) => {
-        setLatestReading(reading);
-      });
+        signalRService.onSensorReading((reading) => {
+          setLatestReading(reading);
+        });
 
-      signalRService.onNewAlert((alert) => {
-        setActiveAlerts((prev) => [alert, ...prev]);
-      });
+        signalRService.onNewAlert((alert) => {
+          setActiveAlerts((prev) => [alert, ...prev]);
+        });
 
-      signalRService.onAlertResolved((alert) => {
-        setActiveAlerts((prev) => prev.filter((a) => a.alertId !== alert.alertId));
-      });
-    } catch (error) {
-      console.error('SignalR connection error:', error);
-      setIsConnected(false);
+        signalRService.onAlertResolved((alert) => {
+          setActiveAlerts((prev) => prev.filter((a) => a.alertId !== alert.alertId));
+        });
+      } else {
+        setIsConnected(false);
+      }
+    } catch (error: any) {
+      // Ignore AbortError and negotiation errors - automatic reconnect will handle them
+      // These are transient issues that resolve automatically
+      if (error?.name !== 'AbortError' && 
+          !(error?.message && error.message.includes('negotiation'))) {
+        console.error('SignalR connection error:', error);
+      }
+      // Don't set connected to false immediately - let automatic reconnect try
+      // The connection state will update when it successfully connects
     }
   };
 
@@ -66,11 +86,18 @@ const Dashboard: React.FC = () => {
         Dashboard
       </Typography>
 
-      <Box sx={{ mb: 2, p: 1, bgcolor: isConnected ? 'success.light' : 'error.light', borderRadius: 1 }}>
-        <Typography variant="body2">
-          SignalR: {isConnected ? 'Connected' : 'Disconnected'}
-        </Typography>
-      </Box>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6}>
+          <Box sx={{ p: 1, bgcolor: isConnected ? 'success.light' : 'error.light', borderRadius: 1 }}>
+            <Typography variant="body2">
+              SignalR: {isConnected ? 'Connected' : 'Disconnected'}
+            </Typography>
+          </Box>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <MqttStatusIndicator compact={false} />
+        </Grid>
+      </Grid>
 
       <Grid container spacing={3}>
         <Grid item xs={12} sm={6} md={3}>

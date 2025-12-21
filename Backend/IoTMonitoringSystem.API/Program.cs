@@ -9,7 +9,13 @@ using IoTMonitoringSystem.API.Hubs;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Configure JSON serialization to use camelCase (matching frontend)
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -32,15 +38,23 @@ builder.Services.AddScoped<ISensorReadingService, SensorReadingService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IAlertRuleService, AlertRuleService>();
 
-// SignalR
+// SignalR with CORS support
 builder.Services.AddSignalR();
 
-// CORS
+// MQTT Service (Hosted Service)
+builder.Services.AddHostedService<MqttService>();
+
+// CORS - Must be configured before SignalR
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowReactApp", policy =>
     {
-        policy.WithOrigins("http://localhost:3000", "http://localhost:5173")
+        policy.WithOrigins(
+                "http://localhost:3000", 
+                "https://localhost:3000",
+                "http://localhost:5173",
+                "https://localhost:5173"
+              )
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -50,17 +64,42 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
+// CRITICAL: Handle CORS preflight (OPTIONS) requests BEFORE any redirects
+
+// Custom middleware to handle OPTIONS requests immediately (before any redirects)
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "OPTIONS")
+    {
+        context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:3000");
+        context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        context.Response.Headers.Add("Access-Control-Allow-Credentials", "true");
+        context.Response.StatusCode = 200;
+        await context.Response.WriteAsync(string.Empty);
+        return;
+    }
+    await next();
+});
+
+// CORS must come FIRST, before any other middleware that might redirect
+app.UseCors("AllowReactApp");
+
+// Completely disable HTTPS redirection - it causes 307 redirects that break CORS
+// DO NOT enable HTTPS redirection in development
+// The backend should run on HTTP (port 5000) only in development
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
-app.UseCors("AllowReactApp");
 app.UseAuthorization();
 
 app.MapControllers();
+
+// SignalR Hub - CORS is already handled by UseCors middleware above
 app.MapHub<MonitoringHub>("/monitoringhub");
 
 app.Run();

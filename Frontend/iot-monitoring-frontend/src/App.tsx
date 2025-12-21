@@ -6,6 +6,7 @@ import { Container, Box } from '@mui/material';
 import Navigation from './components/common/Navigation';
 import Dashboard from './pages/Dashboard';
 import DevicesPage from './pages/DevicesPage';
+import DeviceDetailPage from './pages/DeviceDetailPage';
 import SensorsPage from './pages/SensorsPage';
 import AlertsPage from './pages/AlertsPage';
 
@@ -25,13 +26,19 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <Router
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
           <Navigation />
           <Container maxWidth="xl" sx={{ mt: 4, mb: 4, flex: 1 }}>
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/devices" element={<DevicesPage />} />
+              <Route path="/devices/:id" element={<DeviceDetailPage />} />
               <Route path="/sensors" element={<SensorsPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
             </Routes>

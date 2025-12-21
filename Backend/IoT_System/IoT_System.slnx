@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" />
+  <Project Path="../IoTMonitoringSystem.Core/IoTMonitoringSystem.Core.csproj" />
+  <Project Path="../IoTMonitoringSystem.Infrastructure/IoTMonitoringSystem.Infrastructure.csproj" />
+  <Project Path="../IoTMonitoringSystem.Services/IoTMonitoringSystem.Services.csproj" />
+</Solution>

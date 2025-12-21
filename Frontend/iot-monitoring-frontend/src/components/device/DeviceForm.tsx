@@ -8,6 +8,7 @@ import {
   TextField,
   Grid,
   MenuItem,
+  Alert,
 } from '@mui/material';
 import { CreateDevice } from '../../types';
 
@@ -37,6 +38,7 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
   });
 
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleChange = (field: keyof CreateDevice) => (
     e: React.ChangeEvent<HTMLInputElement>
@@ -47,6 +49,7 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
   const handleSubmit = async () => {
     try {
       setLoading(true);
+      setError(null);
       await onSubmit(formData);
       onClose();
       setFormData({
@@ -58,8 +61,9 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
         edgeDeviceId: '',
         description: '',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting form:', error);
+      setError(error.message || 'Failed to save device. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -69,6 +73,11 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
         <Grid container spacing={2} sx={{ mt: 1 }}>
           <Grid item xs={12}>
             <TextField
