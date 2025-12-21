@@ -1,0 +1,25 @@
+﻿
+> iot-monitoring-frontend@1.0.0 build
+> react-scripts build
+
+node.exe : (node:30420) [DEP0176] DeprecationWarning: fs.F_OK is deprecated, use fs.constants.F_OK instead
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:30420) [D...ts.F_OK instead:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Creating an optimized production build...
+Failed to compile.
+
+TS2345: Argument of type 'HTMLElement | null' is not assignable to parameter of type 'Container'.
+  Type 'null' is not assignable to type 'Container'.
+    13 | }
+    14 |
+  > 15 | const root = ReactDOM.createRoot(document.getElementById('root'));
+       |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    16 | root.render(<App />);
+    17 |
+
+
