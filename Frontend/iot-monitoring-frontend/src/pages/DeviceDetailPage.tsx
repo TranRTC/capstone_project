@@ -233,15 +233,33 @@ const DeviceDetailPage: React.FC = () => {
 
       {/* Temperature Chart - Larger and more prominent */}
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" component="h2" gutterBottom>
-          Real-Time Temperature Monitoring
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5" component="h2">
+            Real-Time Temperature Monitoring
+          </Typography>
+          <Chip 
+            label="Live" 
+            color="success" 
+            size="small"
+            sx={{ 
+              animation: 'pulse 2s infinite',
+              '@keyframes pulse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.6 },
+                '100%': { opacity: 1 },
+              },
+            }}
+          />
+        </Box>
         <Box sx={{ mt: 2 }}>
           <DeviceTemperatureChart
             deviceId={device.deviceId}
             deviceName={device.deviceName}
             height={500}
             showPaper={false}
+            windowMode="time" // SCADA style: time-based window
+            timeWindowMinutes={5} // Shows last 5 minutes
+            // Alternative: windowMode="points" with maxDataPoints={50} for data points mode
           />
         </Box>
       </Paper>

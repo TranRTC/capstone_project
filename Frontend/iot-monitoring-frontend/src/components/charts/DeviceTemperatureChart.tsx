@@ -1,5 +1,16 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Paper, Typography, Box, CircularProgress } from '@mui/material';
+import { 
+  Paper, 
+  Typography, 
+  Box, 
+  CircularProgress, 
+  ButtonGroup, 
+  Button, 
+  IconButton,
+  Tooltip,
+  Slider,
+} from '@mui/material';
+import { ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { signalRService } from '../../services/signalRService';
 import RealTimeChart from './RealTimeChart';
@@ -11,6 +22,10 @@ interface DeviceTemperatureChartProps {
   deviceName: string;
   height?: number;
   showPaper?: boolean;
+  // Chart window configuration
+  windowMode?: 'time' | 'points'; // 'time' = SCADA style (time-based), 'points' = data points based
+  timeWindowMinutes?: number; // Time window in minutes (used when windowMode='time')
+  maxDataPoints?: number; // Max data points (used when windowMode='points')
 }
 
 interface ChartDataPoint {
@@ -23,11 +38,31 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   deviceName,
   height = 300,
   showPaper = true,
+  windowMode: initialWindowMode = 'points', // Default to points mode for backward compatibility
+  timeWindowMinutes: initialTimeWindowMinutes = 5, // Default 5 minutes for time mode
+  maxDataPoints = 50, // Default 50 points for points mode
 }) => {
   const [temperatureSensor, setTemperatureSensor] = useState<Sensor | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [currentValue, setCurrentValue] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Zoom state - allow dynamic zoom control
+  const [windowMode, setWindowMode] = useState<'time' | 'points'>(initialWindowMode);
+  const [timeWindowMinutes, setTimeWindowMinutes] = useState(initialTimeWindowMinutes);
+  
+  // Preset zoom levels (in minutes)
+  const zoomPresets = [
+    { label: '2s', value: 2 / 60 }, // 2 seconds
+    { label: '5s', value: 5 / 60 }, // 5 seconds
+    { label: '10s', value: 10 / 60 }, // 10 seconds
+    { label: '30s', value: 0.5 }, // 30 seconds
+    { label: '1m', value: 1 }, // 1 minute
+    { label: '2m', value: 2 }, // 2 minutes
+    { label: '5m', value: 5 }, // 5 minutes
+    { label: '10m', value: 10 }, // 10 minutes
+  ];
 
   // Fetch temperature sensor for this device
   const fetchTemperatureSensor = useCallback(async () => {
@@ -77,6 +112,10 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
       setChartData(readings);
+      // Set current value to the latest reading
+      if (readings.length > 0) {
+        setCurrentValue(readings[readings.length - 1].value);
+      }
       setLoading(false);
     } catch (err: any) {
       console.error('Error fetching readings:', err);
@@ -121,7 +160,9 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         const handleNewReading = (reading: SensorReading) => {
           // Only update if this reading is for our sensor
           if (reading.sensorId === temperatureSensor.sensorId && reading.deviceId === deviceId) {
+            setCurrentValue(reading.value);
             setChartData((prev) => {
+              // Add new reading to the end (right side)
               const newData = [
                 ...prev,
                 {
@@ -129,8 +170,34 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
                   value: reading.value,
                 },
               ];
-              // Keep only last 50 data points for performance
-              return newData.slice(-50);
+              
+              // Remove duplicates based on timestamp
+              const uniqueData = Array.from(
+                new Map(newData.map(item => [item.timestamp, item])).values()
+              );
+              
+              // Sort by timestamp (oldest first = left, newest last = right)
+              const sortedData = uniqueData.sort(
+                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+              
+              // Apply window based on mode
+              if (windowMode === 'time') {
+                // Time-based window (SCADA style): filter by time, no point limit
+                const now = Date.now();
+                const windowMs = timeWindowMinutes * 60 * 1000;
+                return sortedData.filter(
+                  (point) => (now - new Date(point.timestamp).getTime()) <= windowMs
+                );
+              } else {
+                // Points-based window: limit by number of points
+                if (sortedData.length > maxDataPoints) {
+                  // Remove the first (oldest/leftmost) point, keep the last maxDataPoints
+                  return sortedData.slice(-maxDataPoints);
+                }
+                // If not full yet, return all data (will fill from left to right)
+                return sortedData;
+              }
             });
           }
         };
@@ -153,13 +220,103 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     <>
       {showPaper && (
         <>
-          <Typography variant="h6" gutterBottom>
-            {deviceName} - Temperature
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="h6" gutterBottom>
+              {deviceName} - Temperature
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="caption" color="textSecondary" sx={{ mr: 1 }}>
+                {windowMode === 'time' 
+                  ? timeWindowMinutes < 1 
+                    ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s` 
+                    : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
+                  : `Window: Last ${maxDataPoints} points`}
+              </Typography>
+            </Box>
+          </Box>
           <Typography variant="body2" color="textSecondary" gutterBottom>
             Sensor: {temperatureSensor?.sensorName} ({temperatureSensor?.sensorType})
           </Typography>
         </>
+      )}
+      
+      {/* Zoom Controls - Only show in time mode */}
+      {!loading && !error && temperatureSensor && windowMode === 'time' && (
+        <Box sx={{ mb: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <Typography variant="caption" sx={{ minWidth: '60px' }}>
+              Zoom:
+            </Typography>
+            <ButtonGroup size="small" variant="outlined">
+              {zoomPresets.map((preset) => (
+                <Tooltip key={preset.label} title={`${preset.label} window`}>
+                  <Button
+                    onClick={() => setTimeWindowMinutes(preset.value)}
+                    variant={Math.abs(timeWindowMinutes - preset.value) < 0.001 ? 'contained' : 'outlined'}
+                    sx={{ minWidth: '40px', fontSize: '0.7rem' }}
+                  >
+                    {preset.label}
+                  </Button>
+                </Tooltip>
+              ))}
+            </ButtonGroup>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto', minWidth: '200px' }}>
+              <ZoomOut fontSize="small" />
+              <Slider
+                value={timeWindowMinutes}
+                onChange={(_, value) => setTimeWindowMinutes(value as number)}
+                min={2 / 60} // 2 seconds minimum
+                max={30} // 30 minutes maximum
+                step={1 / 60} // 1 second steps
+                valueLabelDisplay="auto"
+                valueLabelFormat={(value) => 
+                  value < 1 ? `${(value * 60).toFixed(0)}s` : `${value.toFixed(1)}m`
+                }
+                sx={{ width: '150px' }}
+              />
+              <ZoomIn fontSize="small" />
+            </Box>
+            <Tooltip title="Reset to default (5 minutes)">
+              <IconButton 
+                size="small" 
+                onClick={() => setTimeWindowMinutes(initialTimeWindowMinutes)}
+              >
+                <RestartAlt fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+      )}
+      {/* Current Value Display */}
+      {!loading && !error && temperatureSensor && currentValue !== null && (
+        <Box
+          sx={{
+            mb: 2,
+            p: 2,
+            bgcolor: 'primary.light',
+            borderRadius: 2,
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Current Temperature
+          </Typography>
+          <Typography
+            variant="h3"
+            component="div"
+            sx={{
+              fontWeight: 'bold',
+              color: 'primary.main',
+            }}
+          >
+            {currentValue.toFixed(2)} {temperatureSensor.unit || '°C'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Last updated: {chartData.length > 0 
+              ? new Date(chartData[chartData.length - 1].timestamp).toLocaleTimeString()
+              : 'N/A'}
+          </Typography>
+        </Box>
       )}
       {loading ? (
         <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -180,7 +337,8 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       ) : (
         <RealTimeChart
           data={chartData}
-          maxDataPoints={50}
+          maxDataPoints={maxDataPoints}
+          timeWindowMinutes={windowMode === 'time' ? timeWindowMinutes : undefined}
           name="Temperature"
           color="#e74c3c"
           height={height}

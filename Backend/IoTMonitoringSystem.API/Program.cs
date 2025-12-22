@@ -55,7 +55,7 @@ builder.Services.AddCors(options =>
                 "http://localhost:5173",
                 "https://localhost:5173"
               )
-              .AllowAnyHeader()
+              .AllowAnyHeader()  // This allows all headers including x-requested-with
               .AllowAnyMethod()
               .AllowCredentials();
     });
@@ -64,24 +64,6 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
-// CRITICAL: Handle CORS preflight (OPTIONS) requests BEFORE any redirects
-
-// Custom middleware to handle OPTIONS requests immediately (before any redirects)
-app.Use(async (context, next) =>
-{
-    if (context.Request.Method == "OPTIONS")
-    {
-        context.Response.Headers.Add("Access-Control-Allow-Origin", "http://localhost:3000");
-        context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization");
-        context.Response.Headers.Add("Access-Control-Allow-Credentials", "true");
-        context.Response.StatusCode = 200;
-        await context.Response.WriteAsync(string.Empty);
-        return;
-    }
-    await next();
-});
-
 // CORS must come FIRST, before any other middleware that might redirect
 app.UseCors("AllowReactApp");
 
@@ -99,7 +81,8 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// SignalR Hub - CORS is already handled by UseCors middleware above
+// SignalR Hub - CORS is handled by UseCors middleware above
+// SignalR will use the CORS policy configured above
 app.MapHub<MonitoringHub>("/monitoringhub");
 
 app.Run();
