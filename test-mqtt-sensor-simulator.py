@@ -146,3 +146,4 @@ if __name__ == "__main__":
         # Simulate continuous readings
         simulate_sensor(args.device_id, args.sensor_id, args.interval, args.count, args.topic_format)
 
+

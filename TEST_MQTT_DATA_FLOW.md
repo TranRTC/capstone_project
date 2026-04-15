@@ -207,3 +207,4 @@ When a sensor reading is sent:
 - [ ] Data appears in API responses
 - [ ] SignalR notifications work (if frontend connected)
 
+

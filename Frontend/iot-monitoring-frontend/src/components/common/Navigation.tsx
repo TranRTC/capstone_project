@@ -7,7 +7,6 @@ import {
   Sensors as SensorsIcon,
   Notifications as NotificationsIcon,
 } from '@mui/icons-material';
-import MqttStatusIndicator from './MqttStatusIndicator';
 
 const Navigation: React.FC = () => {
   const location = useLocation();
@@ -21,29 +20,30 @@ const Navigation: React.FC = () => {
 
   return (
     <AppBar position="static">
-      <Toolbar>
-        <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+      <Toolbar sx={{ py: 0.5 }}>
+        <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: '-0.02em' }}>
           IoT Monitoring System
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <MqttStatusIndicator compact={true} />
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            {navItems.map((item) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          {navItems.map((item) => {
+            const active = location.pathname === item.path;
+            return (
               <Button
                 key={item.path}
                 component={Link}
                 to={item.path}
-                color="inherit"
+                color={active ? 'primary' : 'inherit'}
                 startIcon={item.icon}
-                variant={location.pathname === item.path ? 'outlined' : 'text'}
+                variant={active ? 'outlined' : 'text'}
                 sx={{
-                  borderColor: location.pathname === item.path ? 'white' : 'transparent',
+                  color: active ? 'primary.main' : 'text.secondary',
+                  borderColor: active ? 'primary.main' : 'transparent',
                 }}
               >
                 {item.label}
               </Button>
-            ))}
-          </Box>
+            );
+          })}
         </Box>
       </Toolbar>
     </AppBar>

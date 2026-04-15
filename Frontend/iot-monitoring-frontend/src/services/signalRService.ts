@@ -110,6 +110,18 @@ class SignalRService {
     this.connection?.on('DeviceStatusChanged', callback);
   }
 
+  onReconnecting(callback: (error?: Error) => void): void {
+    this.connection?.onreconnecting((error) => callback(error));
+  }
+
+  onReconnected(callback: (connectionId?: string) => void): void {
+    this.connection?.onreconnected((connectionId) => callback(connectionId));
+  }
+
+  onClose(callback: (error?: Error) => void): void {
+    this.connection?.onclose((error) => callback(error));
+  }
+
   off(eventName: string): void {
     this.connection?.off(eventName);
   }

@@ -7,6 +7,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IoTMonitoringSystem.Services
 {
+    // Ingests sensor readings (single/batch), queries history with filters/paging, updates device LastSeenAt,
+    // evaluates alert rules, and pushes SensorReadingDto to SignalR when INotificationService is registered.
     public class SensorReadingService : ISensorReadingService
     {
         private readonly ApplicationDbContext _context;
@@ -29,14 +31,13 @@ namespace IoTMonitoringSystem.Services
             _notificationService = notificationService;
         }
 
+        // Validates device and sensor, persists reading, maps to output DTO, updates last seen, evaluates alerts, notifies clients.
         public async Task<SensorReadingDto> CreateReadingAsync(CreateSensorReadingDto dto)
         {
-            // Verify device exists
             var device = await _deviceRepository.GetByIdAsync(dto.DeviceId);
             if (device == null)
                 throw new KeyNotFoundException($"Device with ID {dto.DeviceId} not found");
 
-            // Verify sensor exists
             var sensor = await _context.Sensors.FindAsync(dto.SensorId);
             if (sensor == null)
                 throw new KeyNotFoundException($"Sensor with ID {dto.SensorId} not found");
@@ -55,20 +56,18 @@ namespace IoTMonitoringSystem.Services
             var createdReading = await _readingRepository.CreateAsync(reading);
             var readingDto = MapToSensorReadingDto(createdReading);
 
-            // Update device last seen
             await UpdateDeviceLastSeen(dto.DeviceId);
 
-            // Evaluate alert rules
             if (_alertService != null)
                 await _alertService.EvaluateAlertRulesAsync(readingDto);
 
-            // Notify via SignalR
             if (_notificationService != null)
                 await _notificationService.NotifySensorReadingAsync(readingDto);
 
             return readingDto;
         }
 
+        // Bulk insert via DbContext (one SaveChanges). Then last-seen, per-reading alert eval + SignalR only if both services are non-null.
         public async Task<List<SensorReadingDto>> CreateReadingsBatchAsync(List<CreateSensorReadingDto> dtos)
         {
             var readings = new List<SensorReading>();
@@ -96,13 +95,11 @@ namespace IoTMonitoringSystem.Services
 
             var readingDtos = readings.Select(MapToSensorReadingDto).ToList();
 
-            // Update last seen for all devices
             foreach (var deviceId in deviceIds)
             {
                 await UpdateDeviceLastSeen(deviceId);
             }
 
-            // Evaluate alert rules and notify for each reading
             if (_alertService != null && _notificationService != null)
             {
                 foreach (var readingDto in readingDtos)
@@ -115,6 +112,7 @@ namespace IoTMonitoringSystem.Services
             return readingDtos;
         }
 
+        // Paged list: optional device/sensor/time filters, newest first.
         public async Task<PagedResult<SensorReadingDto>> GetReadingsAsync(SensorReadingQueryDto query)
         {
             var dbQuery = _context.SensorReadings.AsQueryable();
@@ -148,18 +146,21 @@ namespace IoTMonitoringSystem.Services
             };
         }
 
+        // All readings for one device in optional time range (via repository).
         public async Task<List<SensorReadingDto>> GetReadingsByDeviceIdAsync(int deviceId, DateTime? startDate, DateTime? endDate)
         {
             var readings = await _readingRepository.GetByDeviceIdAsync(deviceId, startDate, endDate);
             return readings.Select(MapToSensorReadingDto).ToList();
         }
 
+        // All readings for one sensor in optional time range (via repository).
         public async Task<List<SensorReadingDto>> GetReadingsBySensorIdAsync(int sensorId, DateTime? startDate, DateTime? endDate)
         {
             var readings = await _readingRepository.GetBySensorIdAsync(sensorId, startDate, endDate);
             return readings.Select(MapToSensorReadingDto).ToList();
         }
 
+        // Bumps device LastSeenAt/UpdatedAt when the device row exists.
         private async Task UpdateDeviceLastSeen(int deviceId)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -187,4 +188,3 @@ namespace IoTMonitoringSystem.Services
         }
     }
 }
-

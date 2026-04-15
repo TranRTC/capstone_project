@@ -250,3 +250,4 @@ Write-Host "To send more test readings, run:" -ForegroundColor Cyan
 Write-Host "  python test-mqtt-sensor-simulator.py --device-id $deviceId --sensor-id $sensorId --count 10" -ForegroundColor White
 Write-Host ""
 
+

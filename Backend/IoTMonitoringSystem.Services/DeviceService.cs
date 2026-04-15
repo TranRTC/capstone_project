@@ -4,6 +4,7 @@ using IoTMonitoringSystem.Infrastructure.Repositories;
 
 namespace IoTMonitoringSystem.Services
 {
+    // Application service for devices: CRUD and last-seen. Maps DTOs to Device entities; uses IDeviceRepository for persistence.
     public class DeviceService : IDeviceService
     {
         private readonly IDeviceRepository _deviceRepository;
@@ -13,6 +14,7 @@ namespace IoTMonitoringSystem.Services
             _deviceRepository = deviceRepository;
         }
 
+        // Returns one device by id. Throws KeyNotFoundException if missing.
         public async Task<DeviceDto> GetDeviceByIdAsync(int deviceId)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -22,12 +24,14 @@ namespace IoTMonitoringSystem.Services
             return MapToDeviceDto(device);
         }
 
+        // Returns all devices as list DTOs (fewer fields for grids/menus).
         public async Task<List<DeviceListDto>> GetAllDevicesAsync()
         {
             var devices = await _deviceRepository.GetAllAsync();
             return devices.Select(MapToDeviceListDto).ToList();
         }
 
+        // Creates a device from input; sets IsActive and UTC CreatedAt/UpdatedAt.
         public async Task<DeviceDto> CreateDeviceAsync(CreateDeviceDto dto)
         {
             var device = new Device
@@ -48,6 +52,7 @@ namespace IoTMonitoringSystem.Services
             return MapToDeviceDto(createdDevice);
         }
 
+        // Partial update: only non-null DTO fields are applied. Throws KeyNotFoundException if missing.
         public async Task<DeviceDto> UpdateDeviceAsync(int deviceId, UpdateDeviceDto dto)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -73,6 +78,7 @@ namespace IoTMonitoringSystem.Services
             return MapToDeviceDto(updatedDevice);
         }
 
+        // Deletes by id. Throws KeyNotFoundException if missing.
         public async Task DeleteDeviceAsync(int deviceId)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -82,19 +88,19 @@ namespace IoTMonitoringSystem.Services
             await _deviceRepository.DeleteAsync(device);
         }
 
+        // Refreshes LastSeenAt/UpdatedAt only. status/message reserved for future DeviceStatusHistory. Throws if device missing.
         public async Task UpdateDeviceStatusAsync(int deviceId, string status, string? message = null)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
             if (device == null)
                 throw new KeyNotFoundException($"Device with ID {deviceId} not found");
 
-            // This will be implemented when we add DeviceStatusHistory service
-            // For now, just update LastSeenAt
             device.LastSeenAt = DateTime.UtcNow;
             device.UpdatedAt = DateTime.UtcNow;
             await _deviceRepository.UpdateAsync(device);
         }
 
+        // Updates LastSeenAt/UpdatedAt if the device exists; no-op if not found.
         public async Task UpdateDeviceLastSeenAsync(int deviceId)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
@@ -139,4 +145,3 @@ namespace IoTMonitoringSystem.Services
         }
     }
 }
-
