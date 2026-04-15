@@ -471,15 +471,36 @@ const Dashboard: React.FC = () => {
                 <Timeline fontSize="small" color="action" />
               </Box>
               {dashboardLoading ? (
-                <Skeleton variant="text" width={90} height={40} />
+                <>
+                  <Skeleton variant="text" width="90%" height={28} sx={{ mb: 1 }} />
+                  <Skeleton variant="text" width="70%" height={20} sx={{ mb: 0.5 }} />
+                  <Skeleton variant="text" width="85%" height={18} />
+                </>
+              ) : latestReading ? (
+                <Box>
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                    Value: {latestReading.value}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Device {latestReading.deviceId} • Sensor {latestReading.sensorId}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    {new Date(latestReading.timestamp).toLocaleString()}
+                  </Typography>
+                </Box>
               ) : (
-                <Typography variant="h4">
-                  {latestReading ? `${latestReading.value}` : 'N/A'}
-                </Typography>
+                <Box>
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                    Value: N/A
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    —
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    No readings yet
+                  </Typography>
+                </Box>
               )}
-              <Typography variant="caption" color="text.secondary">
-                Most recent signal value
-              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -595,29 +616,6 @@ const Dashboard: React.FC = () => {
                   </Box>
                 ))}
               </Box>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={panelSx}>
-            <Typography variant="h6" gutterBottom>
-              Latest Sensor Reading
-            </Typography>
-            {latestReading ? (
-              <Box>
-                <Typography variant="body1">
-                  <strong>Value:</strong> {latestReading.value}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Device {latestReading.deviceId} • Sensor {latestReading.sensorId}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {new Date(latestReading.timestamp).toLocaleString()}
-                </Typography>
-              </Box>
-            ) : (
-              <Typography color="text.secondary">No readings yet</Typography>
             )}
           </Paper>
         </Grid>
