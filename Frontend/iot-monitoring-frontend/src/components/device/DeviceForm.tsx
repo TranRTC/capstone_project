@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -7,10 +7,19 @@ import {
   Button,
   TextField,
   Grid,
-  MenuItem,
   Alert,
 } from '@mui/material';
 import { CreateDevice } from '../../types';
+
+const emptyDeviceForm = (): CreateDevice => ({
+  deviceName: '',
+  deviceType: '',
+  location: '',
+  facilityType: '',
+  edgeDeviceType: '',
+  edgeDeviceId: '',
+  description: '',
+});
 
 interface DeviceFormProps {
   open: boolean;
@@ -27,18 +36,24 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
   initialData,
   title = 'Create Device',
 }) => {
-  const [formData, setFormData] = useState<CreateDevice>({
-    deviceName: initialData?.deviceName || '',
-    deviceType: initialData?.deviceType || '',
-    location: initialData?.location || '',
-    facilityType: initialData?.facilityType || '',
-    edgeDeviceType: initialData?.edgeDeviceType || '',
-    edgeDeviceId: initialData?.edgeDeviceId || '',
-    description: initialData?.description || '',
-  });
+  const [formData, setFormData] = useState<CreateDevice>(() => emptyDeviceForm());
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData({
+      deviceName: initialData?.deviceName ?? '',
+      deviceType: initialData?.deviceType ?? '',
+      location: initialData?.location ?? '',
+      facilityType: initialData?.facilityType ?? '',
+      edgeDeviceType: initialData?.edgeDeviceType ?? '',
+      edgeDeviceId: initialData?.edgeDeviceId ?? '',
+      description: initialData?.description ?? '',
+    });
+    setError(null);
+  }, [open, initialData]);
 
   const handleChange = (field: keyof CreateDevice) => (
     e: React.ChangeEvent<HTMLInputElement>
@@ -52,15 +67,7 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
       setError(null);
       await onSubmit(formData);
       onClose();
-      setFormData({
-        deviceName: '',
-        deviceType: '',
-        location: '',
-        facilityType: '',
-        edgeDeviceType: '',
-        edgeDeviceId: '',
-        description: '',
-      });
+      setFormData(emptyDeviceForm());
     } catch (error: any) {
       console.error('Error submitting form:', error);
       setError(error.message || 'Failed to save device. Please try again.');
@@ -93,16 +100,12 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
               fullWidth
               label="Device Type"
               required
-              select
+              placeholder="e.g. Motor, Room, Pump"
+              helperText="Equipment or asset category (max 50 characters)"
               value={formData.deviceType}
               onChange={handleChange('deviceType')}
-            >
-              <MenuItem value="Temperature">Temperature</MenuItem>
-              <MenuItem value="Humidity">Humidity</MenuItem>
-              <MenuItem value="Pressure">Pressure</MenuItem>
-              <MenuItem value="Motion">Motion</MenuItem>
-              <MenuItem value="Other">Other</MenuItem>
-            </TextField>
+              inputProps={{ maxLength: 50 }}
+            />
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
@@ -152,7 +155,11 @@ const DeviceForm: React.FC<DeviceFormProps> = ({
         <Button onClick={onClose} disabled={loading}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={loading || !formData.deviceName || !formData.deviceType}>
+        <Button
+          onClick={handleSubmit}
+          variant="contained"
+          disabled={loading || !formData.deviceName.trim() || !formData.deviceType.trim()}
+        >
           {loading ? 'Saving...' : 'Save'}
         </Button>
       </DialogActions>

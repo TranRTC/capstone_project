@@ -43,6 +43,12 @@ namespace IoTMonitoringSystem.Core.DTOs
         [MaxLength(50)]
         public string? FacilityType { get; set; }
 
+        [MaxLength(50)]
+        public string? EdgeDeviceType { get; set; }
+
+        [MaxLength(100)]
+        public string? EdgeDeviceId { get; set; }
+
         [MaxLength(500)]
         public string? Description { get; set; }
 

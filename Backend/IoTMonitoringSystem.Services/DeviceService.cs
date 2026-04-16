@@ -67,6 +67,10 @@ namespace IoTMonitoringSystem.Services
                 device.Location = dto.Location;
             if (dto.FacilityType != null)
                 device.FacilityType = dto.FacilityType;
+            if (dto.EdgeDeviceType != null)
+                device.EdgeDeviceType = dto.EdgeDeviceType;
+            if (dto.EdgeDeviceId != null)
+                device.EdgeDeviceId = dto.EdgeDeviceId;
             if (dto.Description != null)
                 device.Description = dto.Description;
             if (dto.IsActive.HasValue)
