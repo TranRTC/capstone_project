@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  Paper, 
-  Typography, 
-  Box, 
-  CircularProgress, 
-  ButtonGroup, 
-  Button, 
+import {
+  Paper,
+  Typography,
+  Box,
+  CircularProgress,
+  ButtonGroup,
+  Button,
   IconButton,
   Tooltip,
   Slider,
+  Alert,
 } from '@mui/material';
+import { alpha, useTheme } from '@mui/material/styles';
 import { ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { signalRService } from '../../services/signalRService';
@@ -20,6 +22,8 @@ import * as signalR from '@microsoft/signalr';
 interface DeviceTemperatureChartProps {
   deviceId: number;
   deviceName: string;
+  /** When set, chart this sensor only. Otherwise picks first type matching temperature/temp. */
+  sensorId?: number;
   height?: number;
   showPaper?: boolean;
   // Chart window configuration
@@ -36,12 +40,14 @@ interface ChartDataPoint {
 const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   deviceId,
   deviceName,
+  sensorId,
   height = 300,
   showPaper = true,
   windowMode: initialWindowMode = 'points', // Default to points mode for backward compatibility
   timeWindowMinutes: initialTimeWindowMinutes = 5, // Default 5 minutes for time mode
   maxDataPoints = 50, // Default 50 points for points mode
 }) => {
+  const theme = useTheme();
   const [temperatureSensor, setTemperatureSensor] = useState<Sensor | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [currentValue, setCurrentValue] = useState<number | null>(null);
@@ -64,29 +70,36 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     { label: '10m', value: 10 }, // 10 minutes
   ];
 
-  // Fetch temperature sensor for this device
   const fetchTemperatureSensor = useCallback(async () => {
     try {
       const sensors = await apiService.getSensorsByDevice(deviceId);
-      // Find temperature sensor (case-insensitive)
-      const tempSensor = sensors.find(
-        (s) => s.sensorType.toLowerCase().includes('temperature') || 
-               s.sensorType.toLowerCase().includes('temp')
-      );
-      
-      if (tempSensor) {
-        setTemperatureSensor(tempSensor);
-        return tempSensor;
-      } else {
-        setError('No temperature sensor found for this device');
-        return null;
+
+      const chartSensor =
+        sensorId != null
+          ? sensors.find((s) => s.sensorId === sensorId)
+          : sensors.find(
+              (s) =>
+                s.sensorType.toLowerCase().includes('temperature') ||
+                s.sensorType.toLowerCase().includes('temp')
+            );
+
+      if (chartSensor) {
+        setTemperatureSensor(chartSensor);
+        return chartSensor;
       }
+
+      setError(
+        sensorId != null
+          ? 'Selected sensor is not available for this device'
+          : 'No temperature sensor found for this device'
+      );
+      return null;
     } catch (err: any) {
       console.error('Error fetching sensors:', err);
       setError('Failed to load sensors');
       return null;
     }
-  }, [deviceId]);
+  }, [deviceId, sensorId]);
 
   // Fetch recent temperature readings
   const fetchRecentReadings = useCallback(async (sensorId: number) => {
@@ -119,7 +132,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       setLoading(false);
     } catch (err: any) {
       console.error('Error fetching readings:', err);
-      setError('Failed to load temperature readings');
+      setError('Failed to load sensor readings');
       setLoading(false);
     }
   }, [deviceId]);
@@ -138,7 +151,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     };
 
     initialize();
-  }, [deviceId, fetchTemperatureSensor, fetchRecentReadings]);
+  }, [deviceId, sensorId, fetchTemperatureSensor, fetchRecentReadings]);
 
   // Set up SignalR for real-time updates
   useEffect(() => {
@@ -222,10 +235,10 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         <>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
             <Typography variant="h6" gutterBottom>
-              {deviceName} - Temperature
+              {deviceName} — {temperatureSensor?.sensorName ?? 'Sensor'}
             </Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="caption" color="textSecondary" sx={{ mr: 1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
                 {windowMode === 'time' 
                   ? timeWindowMinutes < 1 
                     ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s` 
@@ -234,53 +247,75 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
               </Typography>
             </Box>
           </Box>
-          <Typography variant="body2" color="textSecondary" gutterBottom>
-            Sensor: {temperatureSensor?.sensorName} ({temperatureSensor?.sensorType})
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            {temperatureSensor?.sensorType}
           </Typography>
         </>
       )}
       
       {/* Zoom Controls - Only show in time mode */}
       {!loading && !error && temperatureSensor && windowMode === 'time' && (
-        <Box sx={{ mb: 2, p: 1, bgcolor: 'background.default', borderRadius: 1 }}>
+        <Box
+          sx={{
+            mb: 2,
+            p: 1.5,
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.default',
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Typography variant="caption" sx={{ minWidth: '60px' }}>
-              Zoom:
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 48, fontWeight: 600 }}>
+              Window
             </Typography>
-            <ButtonGroup size="small" variant="outlined">
+            <ButtonGroup size="small" variant="outlined" sx={{ flexWrap: 'wrap' }}>
               {zoomPresets.map((preset) => (
-                <Tooltip key={preset.label} title={`${preset.label} window`}>
+                <Tooltip key={preset.label} title={`Show last ${preset.label}`}>
                   <Button
                     onClick={() => setTimeWindowMinutes(preset.value)}
                     variant={Math.abs(timeWindowMinutes - preset.value) < 0.001 ? 'contained' : 'outlined'}
-                    sx={{ minWidth: '40px', fontSize: '0.7rem' }}
+                    sx={{
+                      minWidth: 36,
+                      px: 0.75,
+                      fontSize: '0.7rem',
+                      fontWeight: 600,
+                      borderColor: 'divider',
+                    }}
                   >
                     {preset.label}
                   </Button>
                 </Tooltip>
               ))}
             </ButtonGroup>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto', minWidth: '200px' }}>
-              <ZoomOut fontSize="small" />
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                ml: { xs: 0, sm: 'auto' },
+                minWidth: { xs: '100%', sm: 200 },
+                flex: { xs: '1 1 100%', sm: '0 1 auto' },
+              }}
+            >
+              <ZoomOut sx={{ fontSize: 18, color: 'text.secondary' }} />
               <Slider
                 value={timeWindowMinutes}
                 onChange={(_, value) => setTimeWindowMinutes(value as number)}
-                min={2 / 60} // 2 seconds minimum
-                max={30} // 30 minutes maximum
-                step={1 / 60} // 1 second steps
+                min={2 / 60}
+                max={30}
+                step={1 / 60}
                 valueLabelDisplay="auto"
-                valueLabelFormat={(value) => 
+                size="small"
+                valueLabelFormat={(value) =>
                   value < 1 ? `${(value * 60).toFixed(0)}s` : `${value.toFixed(1)}m`
                 }
-                sx={{ width: '150px' }}
+                sx={{ flex: 1, maxWidth: 220, color: theme.palette.primary.main }}
               />
-              <ZoomIn fontSize="small" />
+              <ZoomIn sx={{ fontSize: 18, color: 'text.secondary' }} />
             </Box>
-            <Tooltip title="Reset to default (5 minutes)">
-              <IconButton 
-                size="small" 
-                onClick={() => setTimeWindowMinutes(initialTimeWindowMinutes)}
-              >
+            <Tooltip title="Reset window">
+              <IconButton size="small" onClick={() => setTimeWindowMinutes(initialTimeWindowMinutes)} sx={{ ml: 'auto' }}>
                 <RestartAlt fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -292,58 +327,115 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         <Box
           sx={{
             mb: 2,
-            p: 2,
-            bgcolor: 'primary.light',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            flexWrap: 'wrap',
+            py: 1.75,
+            px: 2,
             borderRadius: 2,
-            textAlign: 'center',
+            border: 1,
+            borderColor: 'divider',
+            bgcolor: alpha(theme.palette.primary.main, 0.04),
+            borderLeft: 4,
+            borderLeftColor: 'primary.main',
           }}
         >
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            Current Temperature
-          </Typography>
-          <Typography
-            variant="h3"
-            component="div"
-            sx={{
-              fontWeight: 'bold',
-              color: 'primary.main',
-            }}
-          >
-            {currentValue.toFixed(2)} {temperatureSensor.unit || '°C'}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Last updated: {chartData.length > 0 
-              ? new Date(chartData[chartData.length - 1].timestamp).toLocaleTimeString()
-              : 'N/A'}
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 0.5, lineHeight: 1.6 }}>
+              Latest reading
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75, mt: 0.25 }}>
+              <Typography variant="h4" component="span" sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+                {currentValue.toFixed(2)}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" component="span">
+                {temperatureSensor.unit || '°C'}
+              </Typography>
+            </Box>
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
+            {chartData.length > 0
+              ? new Date(chartData[chartData.length - 1].timestamp).toLocaleString()
+              : '—'}
           </Typography>
         </Box>
       )}
       {loading ? (
-        <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <CircularProgress />
+        <Box
+          sx={{
+            height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.default',
+          }}
+        >
+          <CircularProgress size={36} thickness={4} />
         </Box>
       ) : error ? (
-        <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography color="error">{error}</Typography>
+        <Box sx={{ minHeight: height * 0.35, display: 'flex', alignItems: 'center' }}>
+          <Alert severity="error" sx={{ width: '100%' }}>
+            {error}
+          </Alert>
         </Box>
       ) : !temperatureSensor ? (
-        <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography color="textSecondary">No temperature sensor available</Typography>
+        <Box
+          sx={{
+            height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.default',
+          }}
+        >
+          <Typography color="text.secondary" variant="body2">
+            No chart sensor available
+          </Typography>
         </Box>
       ) : chartData.length === 0 ? (
-        <Box sx={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Typography color="textSecondary">No temperature data available yet</Typography>
+        <Box
+          sx={{
+            height,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.default',
+          }}
+        >
+          <Typography color="text.secondary" variant="body2">
+            No readings for this sensor yet
+          </Typography>
         </Box>
       ) : (
-        <RealTimeChart
-          data={chartData}
-          maxDataPoints={maxDataPoints}
-          timeWindowMinutes={windowMode === 'time' ? timeWindowMinutes : undefined}
-          name="Temperature"
-          color="#e74c3c"
-          height={height}
-          unit={temperatureSensor.unit || '°C'}
-        />
+        <Box
+          sx={{
+            p: { xs: 1, sm: 2 },
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.paper',
+          }}
+        >
+          <RealTimeChart
+            data={chartData}
+            maxDataPoints={maxDataPoints}
+            timeWindowMinutes={windowMode === 'time' ? timeWindowMinutes : undefined}
+            name={temperatureSensor?.sensorName ?? 'Sensor'}
+            height={height}
+            unit={temperatureSensor.unit || '°C'}
+          />
+        </Box>
       )}
     </>
   );

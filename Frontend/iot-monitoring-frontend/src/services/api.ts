@@ -5,6 +5,7 @@ import {
   CreateDevice,
   Sensor,
   CreateSensor,
+  UpdateSensorPayload,
   SensorReading,
   CreateSensorReading,
   Alert,
@@ -119,7 +120,7 @@ class ApiService {
     return response.data.data;
   }
 
-  async updateSensor(id: number, sensor: Partial<CreateSensor>): Promise<Sensor> {
+  async updateSensor(id: number, sensor: UpdateSensorPayload): Promise<Sensor> {
     const response = await this.api.put<ApiResponse<Sensor>>(`/sensors/${id}`, sensor);
     if (!response.data.data) {
       throw new Error('Failed to update sensor');

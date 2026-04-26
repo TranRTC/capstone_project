@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -9,14 +9,21 @@ import {
   CardContent,
   Button,
   Chip,
-  CircularProgress,
+  Skeleton,
   Breadcrumbs,
   Link,
+  Alert as MuiAlert,
 } from '@mui/material';
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import DeviceTemperatureChart from '../components/charts/DeviceTemperatureChart';
 import { Device } from '../types';
+
+const panelSx = {
+  p: 2.5,
+  border: 1,
+  borderColor: 'divider',
+  boxShadow: 'none',
+  bgcolor: 'background.paper',
+};
 
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -26,9 +33,20 @@ const DeviceDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) {
-      loadDevice(parseInt(id));
+    if (!id) {
+      setDevice(null);
+      setError('Invalid device link.');
+      setLoading(false);
+      return;
     }
+    const deviceId = Number.parseInt(id, 10);
+    if (!Number.isFinite(deviceId)) {
+      setDevice(null);
+      setError('Invalid device ID.');
+      setLoading(false);
+      return;
+    }
+    loadDevice(deviceId);
   }, [id]);
 
   const loadDevice = async (deviceId: number) => {
@@ -39,16 +57,30 @@ const DeviceDetailPage: React.FC = () => {
       setDevice(deviceData);
     } catch (err: any) {
       console.error('Error loading device:', err);
+      setDevice(null);
       setError(err.message || 'Failed to load device');
     } finally {
       setLoading(false);
     }
   };
 
+  const parsedId = id ? Number.parseInt(id, 10) : NaN;
+  const canRetry = Number.isFinite(parsedId);
+
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
+      <Box>
+        <Skeleton variant="text" width={280} height={32} sx={{ mb: 2 }} />
+        <Paper sx={{ ...panelSx, mb: 3 }}>
+          <Skeleton variant="text" width="60%" height={48} sx={{ mb: 2 }} />
+          <Grid container spacing={2}>
+            {[1, 2, 3, 4].map((k) => (
+              <Grid item xs={12} sm={6} md={3} key={k}>
+                <Skeleton variant="rounded" height={88} />
+              </Grid>
+            ))}
+          </Grid>
+        </Paper>
       </Box>
     );
   }
@@ -56,51 +88,58 @@ const DeviceDetailPage: React.FC = () => {
   if (error || !device) {
     return (
       <Box>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={() => navigate('/devices')}
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link component={RouterLink} to="/devices" color="inherit" underline="hover">
+            Devices
+          </Link>
+          <Typography color="text.primary">Detail</Typography>
+        </Breadcrumbs>
+
+        <MuiAlert
+          severity="error"
           sx={{ mb: 2 }}
+          action={(
+            <Button
+              color="inherit"
+              size="small"
+              disabled={!canRetry}
+              onClick={() => canRetry && loadDevice(parsedId)}
+            >
+              Retry
+            </Button>
+          )}
         >
+          {error || 'Device not found'}
+        </MuiAlert>
+
+        <Button variant="outlined" onClick={() => navigate('/devices')}>
           Back to Devices
         </Button>
-        <Paper sx={{ p: 3 }}>
-          <Typography color="error" variant="h6">
-            {error || 'Device not found'}
-          </Typography>
-        </Paper>
       </Box>
     );
   }
 
   return (
     <Box>
-      {/* Breadcrumbs */}
       <Breadcrumbs sx={{ mb: 2 }}>
-        <Link
-          component="button"
-          variant="body1"
-          onClick={() => navigate('/devices')}
-          sx={{ cursor: 'pointer', textDecoration: 'none' }}
-        >
+        <Link component={RouterLink} to="/devices" color="inherit" underline="hover">
           Devices
         </Link>
         <Typography color="text.primary">{device.deviceName}</Typography>
       </Breadcrumbs>
 
-      {/* Back Button */}
-      <Button
-        startIcon={<ArrowBackIcon />}
-        onClick={() => navigate('/devices')}
-        sx={{ mb: 3 }}
-      >
-        Back to Devices
-      </Button>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 640 }}>
+        Device profile below. Live readings and charts are tied to sensors —{' '}
+        <Link component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} underline="hover">
+          open Sensors for this device
+        </Link>
+        .
+      </Typography>
 
-      {/* Device Information */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Paper sx={{ ...panelSx }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
               <Typography variant="h4" component="h1">
                 {device.deviceName}
               </Typography>
@@ -113,9 +152,9 @@ const DeviceDetailPage: React.FC = () => {
 
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                   <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
+                    <Typography color="text.secondary" gutterBottom variant="body2">
                       Device ID
                     </Typography>
                     <Typography variant="h6">{device.deviceId}</Typography>
@@ -124,9 +163,9 @@ const DeviceDetailPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                   <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
+                    <Typography color="text.secondary" gutterBottom variant="body2">
                       Device Type
                     </Typography>
                     <Typography variant="h6">{device.deviceType}</Typography>
@@ -136,9 +175,9 @@ const DeviceDetailPage: React.FC = () => {
 
               {device.location && (
                 <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                     <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
+                      <Typography color="text.secondary" gutterBottom variant="body2">
                         Location
                       </Typography>
                       <Typography variant="h6">{device.location}</Typography>
@@ -149,9 +188,9 @@ const DeviceDetailPage: React.FC = () => {
 
               {device.facilityType && (
                 <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                     <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
+                      <Typography color="text.secondary" gutterBottom variant="body2">
                         Facility Type
                       </Typography>
                       <Typography variant="h6">{device.facilityType}</Typography>
@@ -162,9 +201,9 @@ const DeviceDetailPage: React.FC = () => {
 
               {device.edgeDeviceType && (
                 <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                     <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
+                      <Typography color="text.secondary" gutterBottom variant="body2">
                         Edge Device Type
                       </Typography>
                       <Typography variant="h6">{device.edgeDeviceType}</Typography>
@@ -175,9 +214,9 @@ const DeviceDetailPage: React.FC = () => {
 
               {device.edgeDeviceId && (
                 <Grid item xs={12} md={6}>
-                  <Card variant="outlined">
+                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                     <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
+                      <Typography color="text.secondary" gutterBottom variant="body2">
                         Edge Device ID
                       </Typography>
                       <Typography variant="h6">{device.edgeDeviceId}</Typography>
@@ -187,9 +226,9 @@ const DeviceDetailPage: React.FC = () => {
               )}
 
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                   <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
+                    <Typography color="text.secondary" gutterBottom variant="body2">
                       Last Seen
                     </Typography>
                     <Typography variant="h6">
@@ -202,9 +241,9 @@ const DeviceDetailPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card variant="outlined">
+                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
                   <CardContent>
-                    <Typography color="textSecondary" gutterBottom>
+                    <Typography color="text.secondary" gutterBottom variant="body2">
                       Created At
                     </Typography>
                     <Typography variant="h6">
@@ -214,58 +253,12 @@ const DeviceDetailPage: React.FC = () => {
                 </Card>
               </Grid>
 
-              {device.description && (
-                <Grid item xs={12}>
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Typography color="textSecondary" gutterBottom>
-                        Description
-                      </Typography>
-                      <Typography variant="body1">{device.description}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
             </Grid>
           </Paper>
         </Grid>
       </Grid>
-
-      {/* Temperature Chart - Larger and more prominent */}
-      <Paper sx={{ p: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h5" component="h2">
-            Real-Time Temperature Monitoring
-          </Typography>
-          <Chip 
-            label="Live" 
-            color="success" 
-            size="small"
-            sx={{ 
-              animation: 'pulse 2s infinite',
-              '@keyframes pulse': {
-                '0%': { opacity: 1 },
-                '50%': { opacity: 0.6 },
-                '100%': { opacity: 1 },
-              },
-            }}
-          />
-        </Box>
-        <Box sx={{ mt: 2 }}>
-          <DeviceTemperatureChart
-            deviceId={device.deviceId}
-            deviceName={device.deviceName}
-            height={500}
-            showPaper={false}
-            windowMode="time" // SCADA style: time-based window
-            timeWindowMinutes={5} // Shows last 5 minutes
-            // Alternative: windowMode="points" with maxDataPoints={50} for data points mode
-          />
-        </Box>
-      </Paper>
     </Box>
   );
 };
 
 export default DeviceDetailPage;
-

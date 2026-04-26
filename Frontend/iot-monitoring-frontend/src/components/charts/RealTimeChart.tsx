@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useTheme } from '@mui/material/styles';
 import {
   LineChart as RechartsLineChart,
   Line,
@@ -22,106 +23,130 @@ interface RealTimeChartProps {
   color?: string;
   height?: number;
   unit?: string;
-  timeWindowMinutes?: number; // Time window in minutes (SCADA style)
+  timeWindowMinutes?: number;
 }
 
 const RealTimeChart: React.FC<RealTimeChartProps> = ({
   data,
   maxDataPoints = 50,
   name = 'Value',
-  color = '#1976d2',
+  color,
   height = 300,
   unit = '',
   timeWindowMinutes,
 }) => {
+  const theme = useTheme();
+  const lineColor = color ?? theme.palette.primary.main;
   const [chartData, setChartData] = useState<Array<{ time: string; value: number; timestamp: number }>>([]);
 
   useEffect(() => {
-    // SCADA-style rolling window behavior:
-    // Option 1: Time-based window (most common in SCADA) - shows last N minutes
-    // Option 2: Data points window - shows last N data points
     const now = Date.now();
     const sortedData = [...data]
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       .map((point) => {
         const date = new Date(point.timestamp);
         const timestamp = date.getTime();
-        // Format time based on window size - show seconds for small windows
         let timeLabel: string;
         if (timeWindowMinutes && timeWindowMinutes < 1) {
-          // For windows less than 1 minute, show seconds
           const seconds = date.getSeconds();
           const minutes = date.getMinutes();
           timeLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else if (timeWindowMinutes && timeWindowMinutes < 5) {
-          // For windows less than 5 minutes, show MM:SS
           const seconds = date.getSeconds();
           const minutes = date.getMinutes();
           timeLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
         } else {
-          // For larger windows, show full time
-          timeLabel = date.toLocaleTimeString();
+          timeLabel = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
         return {
           time: timeLabel,
           value: point.value,
-          timestamp: timestamp,
+          timestamp,
         };
       })
       .filter((point) => {
-        // If time window is specified, filter by time (SCADA style)
         if (timeWindowMinutes) {
           const windowMs = timeWindowMinutes * 60 * 1000;
-          return (now - point.timestamp) <= windowMs;
+          return now - point.timestamp <= windowMs;
         }
-        // Otherwise, use data points limit
         return true;
       })
-      .slice(-maxDataPoints); // Keep only the most recent data
-    
+      .slice(-maxDataPoints);
+
     setChartData(sortedData);
   }, [data, maxDataPoints, timeWindowMinutes]);
 
+  const gridColor = theme.palette.divider;
+  const axisColor = theme.palette.text.secondary;
+
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsLineChart 
+      <RechartsLineChart
         data={chartData}
-        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+        margin={{ top: 12, right: 8, left: 4, bottom: 8 }}
       >
-        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-        <XAxis 
-          dataKey="time"
-          tick={{ fontSize: 12 }}
-          interval={timeWindowMinutes && timeWindowMinutes < 1 ? 0 : 'preserveStartEnd'}
-          // Show time labels - data is sorted oldest (left) to newest (right)
-          // When window is full, oldest data scrolls out left, new data appears on right
-          // For high resolution (seconds), show more ticks
+        <CartesianGrid
+          stroke={gridColor}
+          strokeDasharray="4 4"
+          vertical={false}
+          opacity={1}
         />
-        <YAxis 
-          label={{ value: unit, angle: -90, position: 'insideLeft' }}
+        <XAxis
+          dataKey="time"
+          tick={{ fill: axisColor, fontSize: 11 }}
+          tickLine={false}
+          axisLine={{ stroke: gridColor }}
+          interval={timeWindowMinutes && timeWindowMinutes < 1 ? 0 : 'preserveStartEnd'}
+          dy={6}
+        />
+        <YAxis
+          label={{
+            value: unit || 'Value',
+            angle: -90,
+            position: 'insideLeft',
+            style: { fill: axisColor, fontSize: 11, fontWeight: 500 },
+            offset: 4,
+          }}
           domain={['auto', 'auto']}
-          tick={{ fontSize: 12 }}
+          tick={{ fill: axisColor, fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          width={56}
         />
         <Tooltip
-          formatter={(value: number) => [`${value.toFixed(2)} ${unit}`, name]}
-          labelFormatter={(label) => `Time: ${label}`}
+          formatter={(value: number) => [`${value.toFixed(2)}${unit ? ` ${unit}` : ''}`, name]}
+          labelFormatter={(label) => label}
+          cursor={{ stroke: gridColor, strokeWidth: 1 }}
           contentStyle={{
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
+            backgroundColor: theme.palette.background.paper,
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: Number(theme.shape.borderRadius),
+            boxShadow: theme.shadows[3],
+            fontSize: 12,
+            padding: '10px 12px',
           }}
+          labelStyle={{ color: theme.palette.text.secondary, marginBottom: 4, fontSize: 11 }}
+          itemStyle={{ color: theme.palette.text.primary, fontWeight: 600 }}
         />
-        <Legend />
+        <Legend
+          wrapperStyle={{ paddingTop: 16 }}
+          iconType="plainline"
+          formatter={(value) => (
+            <span style={{ color: theme.palette.text.primary, fontSize: 12, fontWeight: 500 }}>{value}</span>
+          )}
+        />
         <Line
           type="monotone"
           dataKey="value"
           name={name}
-          stroke={color}
-          strokeWidth={2.5}
+          stroke={lineColor}
+          strokeWidth={2}
           dot={false}
-          isAnimationActive={true}
-          animationDuration={300}
-          connectNulls={true}
+          activeDot={{ r: 4, strokeWidth: 0, fill: lineColor }}
+          isAnimationActive
+          animationDuration={400}
+          animationEasing="ease-out"
+          connectNulls
         />
       </RechartsLineChart>
     </ResponsiveContainer>
@@ -129,4 +154,3 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
 };
 
 export default RealTimeChart;
-

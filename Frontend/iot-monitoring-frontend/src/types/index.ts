@@ -53,7 +53,11 @@ export interface CreateSensor {
   unit?: string;
   minValue?: number;
   maxValue?: number;
+  edgeDeviceId?: string;
 }
+
+/** Matches backend UpdateSensorDto (partial fields + optional IsActive). */
+export type UpdateSensorPayload = Partial<CreateSensor> & { isActive?: boolean };
 
 export interface SensorReading {
   readingId: number;
