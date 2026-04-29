@@ -46,6 +46,7 @@ namespace IoTMonitoringSystem.Core.Entities
         public ICollection<OperationalMetric> OperationalMetrics { get; set; } = new List<OperationalMetric>();
         public ICollection<AlertRule> AlertRules { get; set; } = new List<AlertRule>();
         public ICollection<DeviceConfiguration> DeviceConfigurations { get; set; } = new List<DeviceConfiguration>();
+        public ICollection<DeviceCommand> DeviceCommands { get; set; } = new List<DeviceCommand>();
     }
 }
 

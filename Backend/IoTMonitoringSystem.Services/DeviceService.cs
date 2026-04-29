@@ -38,11 +38,11 @@ namespace IoTMonitoringSystem.Services
             {
                 DeviceName = dto.DeviceName,
                 DeviceType = dto.DeviceType,
-                Location = dto.Location,
-                FacilityType = dto.FacilityType,
-                EdgeDeviceType = dto.EdgeDeviceType,
-                EdgeDeviceId = dto.EdgeDeviceId,
-                Description = dto.Description,
+                Location = NormalizeOptional(dto.Location),
+                FacilityType = NormalizeOptional(dto.FacilityType),
+                EdgeDeviceType = NormalizeOptional(dto.EdgeDeviceType),
+                EdgeDeviceId = NormalizeOptional(dto.EdgeDeviceId),
+                Description = NormalizeOptional(dto.Description),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -64,15 +64,15 @@ namespace IoTMonitoringSystem.Services
             if (dto.DeviceType != null)
                 device.DeviceType = dto.DeviceType;
             if (dto.Location != null)
-                device.Location = dto.Location;
+                device.Location = NormalizeOptional(dto.Location);
             if (dto.FacilityType != null)
-                device.FacilityType = dto.FacilityType;
+                device.FacilityType = NormalizeOptional(dto.FacilityType);
             if (dto.EdgeDeviceType != null)
-                device.EdgeDeviceType = dto.EdgeDeviceType;
+                device.EdgeDeviceType = NormalizeOptional(dto.EdgeDeviceType);
             if (dto.EdgeDeviceId != null)
-                device.EdgeDeviceId = dto.EdgeDeviceId;
+                device.EdgeDeviceId = NormalizeOptional(dto.EdgeDeviceId);
             if (dto.Description != null)
-                device.Description = dto.Description;
+                device.Description = NormalizeOptional(dto.Description);
             if (dto.IsActive.HasValue)
                 device.IsActive = dto.IsActive.Value;
 
@@ -146,6 +146,11 @@ namespace IoTMonitoringSystem.Services
                 IsActive = device.IsActive,
                 LastSeenAt = device.LastSeenAt
             };
+        }
+
+        private static string? NormalizeOptional(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
     }
 }

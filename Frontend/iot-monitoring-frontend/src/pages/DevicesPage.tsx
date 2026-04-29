@@ -19,7 +19,13 @@ import { alpha } from '@mui/material/styles';
 import { Add as AddIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
 import DeviceForm from '../components/device/DeviceForm';
-import { Device, DeviceList, CreateDevice } from '../types';
+import {
+  Device,
+  DeviceList,
+  CreateDevice,
+  DeviceCapabilitiesInput,
+  DeviceConfigurationInput,
+} from '../types';
 
 function deviceToFormValues(d: Device): CreateDevice {
   return {
@@ -87,6 +93,52 @@ const DevicesPage: React.FC = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<DeviceList | null>(null);
   const [formInitialData, setFormInitialData] = useState<CreateDevice | undefined>(undefined);
+  const [formInitialCapabilities, setFormInitialCapabilities] = useState<DeviceCapabilitiesInput | undefined>(undefined);
+
+  const capabilitiesToConfigurations = (capabilities: DeviceCapabilitiesInput): DeviceConfigurationInput[] => {
+    const configs: DeviceConfigurationInput[] = [
+      { configurationKey: 'supportsTelemetry', configurationValue: String(capabilities.supportsTelemetry), valueType: 'bool' },
+      { configurationKey: 'supportsPowerControl', configurationValue: String(capabilities.supportsPowerControl), valueType: 'bool' },
+      { configurationKey: 'supportsAnalogControl', configurationValue: String(capabilities.supportsAnalogControl), valueType: 'bool' },
+    ];
+
+    if (capabilities.supportsAnalogControl) {
+      configs.push(
+        { configurationKey: 'analogMin', configurationValue: String(capabilities.analogMin ?? 0), valueType: 'number' },
+        { configurationKey: 'analogMax', configurationValue: String(capabilities.analogMax ?? 100), valueType: 'number' },
+        { configurationKey: 'analogStep', configurationValue: String(capabilities.analogStep ?? 1), valueType: 'number' },
+        { configurationKey: 'controlUnit', configurationValue: capabilities.controlUnit ?? '', valueType: 'string' }
+      );
+    }
+
+    return configs;
+  };
+
+  const configurationsToCapabilities = (
+    configs: { configurationKey: string; configurationValue?: string }[],
+    fallbackDeviceType?: string
+  ): DeviceCapabilitiesInput => {
+    const lowered = (fallbackDeviceType ?? '').toLowerCase();
+    const actuatorLike = lowered.includes('motor') || lowered.includes('actuator') || lowered.includes('controller');
+    const map = new Map<string, string>();
+    configs.forEach((c) => map.set(c.configurationKey, c.configurationValue ?? ''));
+
+    return {
+      supportsTelemetry: map.get('supportsTelemetry')
+        ? map.get('supportsTelemetry')?.toLowerCase() === 'true'
+        : true,
+      supportsPowerControl: map.get('supportsPowerControl')
+        ? map.get('supportsPowerControl')?.toLowerCase() === 'true'
+        : actuatorLike,
+      supportsAnalogControl: map.get('supportsAnalogControl')
+        ? map.get('supportsAnalogControl')?.toLowerCase() === 'true'
+        : actuatorLike,
+      analogMin: Number(map.get('analogMin') ?? 0),
+      analogMax: Number(map.get('analogMax') ?? 100),
+      analogStep: Number(map.get('analogStep') ?? 1),
+      controlUnit: map.get('controlUnit') ?? '',
+    };
+  };
 
   useEffect(() => {
     loadDevices();
@@ -107,11 +159,19 @@ const DevicesPage: React.FC = () => {
     }
   };
 
-  const handleSubmitDevice = async (device: CreateDevice) => {
+  const handleSubmitDevice = async (device: CreateDevice, capabilities: DeviceCapabilitiesInput) => {
     if (editingDevice) {
       await apiService.updateDevice(editingDevice.deviceId, device);
+      await apiService.updateDeviceConfigurations(
+        editingDevice.deviceId,
+        capabilitiesToConfigurations(capabilities)
+      );
     } else {
-      await apiService.createDevice(device);
+      const created = await apiService.createDevice(device);
+      await apiService.updateDeviceConfigurations(
+        created.deviceId,
+        capabilitiesToConfigurations(capabilities)
+      );
     }
     await loadDevices();
   };
@@ -119,8 +179,10 @@ const DevicesPage: React.FC = () => {
   const handleEditDevice = async (device: DeviceList) => {
     try {
       const full = await apiService.getDevice(device.deviceId);
+      const configs = await apiService.getDeviceConfigurations(device.deviceId);
       setEditingDevice(device);
       setFormInitialData(deviceToFormValues(full));
+      setFormInitialCapabilities(configurationsToCapabilities(configs, full.deviceType));
       setFormOpen(true);
     } catch (error: any) {
       console.error('Error loading device:', error);
@@ -144,6 +206,7 @@ const DevicesPage: React.FC = () => {
     setFormOpen(false);
     setEditingDevice(null);
     setFormInitialData(undefined);
+    setFormInitialCapabilities(undefined);
   };
 
   return (
@@ -180,6 +243,7 @@ const DevicesPage: React.FC = () => {
         onClose={handleCloseForm}
         onSubmit={handleSubmitDevice}
         initialData={formInitialData}
+        initialCapabilities={formInitialCapabilities}
         title={editingDevice ? 'Edit Device' : 'Create Device'}
       />
 
@@ -224,7 +288,7 @@ const DevicesPage: React.FC = () => {
                   <TableCell>Location</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Last Seen</TableCell>
-                  <TableCell align="center">Actions</TableCell>
+                  <TableCell align="center" sx={{ width: 220 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -256,8 +320,16 @@ const DevicesPage: React.FC = () => {
                           ? new Date(device.lastSeenAt).toLocaleString()
                           : 'Never'}
                       </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, justifyContent: 'center', alignItems: 'center' }}>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            flexWrap: 'nowrap',
+                            gap: 0.75,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                        >
                           <Button
                             size="small"
                             variant="outlined"

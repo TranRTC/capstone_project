@@ -8,6 +8,10 @@ import {
   UpdateSensorPayload,
   SensorReading,
   CreateSensorReading,
+  DeviceCommand,
+  CreateDeviceCommand,
+  DeviceConfiguration,
+  DeviceConfigurationInput,
   Alert,
   AlertRule,
   CreateAlertRule,
@@ -155,6 +159,62 @@ class ApiService {
     );
     if (!response.data.data) {
       throw new Error('Failed to get sensor readings');
+    }
+    return response.data.data;
+  }
+
+  // Device Command endpoints
+  async createDeviceCommand(deviceId: number, command: CreateDeviceCommand): Promise<DeviceCommand> {
+    const response = await this.api.post<ApiResponse<DeviceCommand>>(
+      `/devices/${deviceId}/commands`,
+      command
+    );
+    if (!response.data.data) {
+      throw new Error(response.data.message || 'Failed to create device command');
+    }
+    return response.data.data;
+  }
+
+  async getDeviceCommands(
+    deviceId: number,
+    params?: {
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      pageNumber?: number;
+      pageSize?: number;
+    }
+  ): Promise<PagedResult<DeviceCommand>> {
+    const response = await this.api.get<ApiResponse<PagedResult<DeviceCommand>>>(
+      `/devices/${deviceId}/commands`,
+      { params }
+    );
+
+    if (!response.data.data) {
+      throw new Error('Failed to get device commands');
+    }
+
+    return response.data.data;
+  }
+
+  // Device Configuration endpoints
+  async getDeviceConfigurations(deviceId: number): Promise<DeviceConfiguration[]> {
+    const response = await this.api.get<ApiResponse<DeviceConfiguration[]>>(
+      `/devices/${deviceId}/configurations`
+    );
+    return response.data.data || [];
+  }
+
+  async updateDeviceConfigurations(
+    deviceId: number,
+    configurations: DeviceConfigurationInput[]
+  ): Promise<DeviceConfiguration[]> {
+    const response = await this.api.put<ApiResponse<DeviceConfiguration[]>>(
+      `/devices/${deviceId}/configurations`,
+      { configurations }
+    );
+    if (!response.data.data) {
+      throw new Error(response.data.message || 'Failed to update device configurations');
     }
     return response.data.data;
   }

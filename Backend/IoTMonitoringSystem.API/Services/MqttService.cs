@@ -52,6 +52,7 @@ namespace IoTMonitoringSystem.API.Services
                 var subscribeOptions = factory.CreateSubscribeOptionsBuilder()
                     .WithTopicFilter(f => f.WithTopic("devices/+/sensors/+/readings"))
                     .WithTopicFilter(f => f.WithTopic("sensor/reading/+/+"))
+                    .WithTopicFilter(f => f.WithTopic("devices/+/commands/ack"))
                     .Build();
 
                 await _mqttClient.SubscribeAsync(subscribeOptions, cancellationToken);
@@ -94,6 +95,15 @@ namespace IoTMonitoringSystem.API.Services
                     if (int.TryParse(topicParts[1], out int deviceId) && int.TryParse(topicParts[3], out int sensorId))
                     {
                         await ProcessSensorReading(deviceId, sensorId, payload);
+                        return;
+                    }
+                }
+
+                if (topicParts.Length >= 4 && topicParts[0] == "devices" && topicParts[2] == "commands" && topicParts[3] == "ack")
+                {
+                    if (int.TryParse(topicParts[1], out int ackDeviceId))
+                    {
+                        await ProcessCommandAck(ackDeviceId, payload);
                         return;
                     }
                 }
@@ -160,6 +170,44 @@ namespace IoTMonitoringSystem.API.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing JSON payload.");
+            }
+        }
+
+        private async Task ProcessCommandAck(int deviceId, byte[] payload)
+        {
+            try
+            {
+                var payloadString = Encoding.UTF8.GetString(payload);
+                var jsonDocument = JsonDocument.Parse(payloadString);
+                var root = jsonDocument.RootElement;
+
+                if (!root.TryGetProperty("commandId", out var commandIdProperty))
+                {
+                    _logger.LogWarning("Command ACK missing commandId for device {DeviceId}", deviceId);
+                    return;
+                }
+
+                var commandId = commandIdProperty.GetInt64();
+                var status = root.TryGetProperty("status", out var statusProperty)
+                    ? statusProperty.GetString() ?? "Acked"
+                    : "Acked";
+                var errorMessage = root.TryGetProperty("errorMessage", out var errorProperty)
+                    ? errorProperty.GetString()
+                    : null;
+
+                using var scope = _serviceProvider.CreateScope();
+                var commandService = scope.ServiceProvider.GetRequiredService<IDeviceCommandService>();
+                await commandService.UpdateCommandStatusAsync(commandId, status, errorMessage);
+
+                _logger.LogInformation(
+                    "Processed command ACK for command {CommandId}, device {DeviceId}, status {Status}",
+                    commandId,
+                    deviceId,
+                    status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing command ACK for device {DeviceId}.", deviceId);
             }
         }
     }

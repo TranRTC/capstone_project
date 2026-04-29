@@ -33,6 +33,34 @@ export interface CreateDevice {
   description?: string;
 }
 
+export interface DeviceConfiguration {
+  configurationId: number;
+  deviceId: number;
+  configurationKey: string;
+  configurationValue?: string;
+  valueType?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeviceConfigurationInput {
+  configurationKey: string;
+  configurationValue?: string;
+  valueType?: string;
+  description?: string;
+}
+
+export interface DeviceCapabilitiesInput {
+  supportsTelemetry: boolean;
+  supportsPowerControl: boolean;
+  supportsAnalogControl: boolean;
+  analogMin?: number;
+  analogMax?: number;
+  analogStep?: number;
+  controlUnit?: string;
+}
+
 export interface Sensor {
   sensorId: number;
   deviceId: number;
@@ -77,6 +105,26 @@ export interface CreateSensorReading {
   timestamp?: string;
   status?: string;
   quality?: string;
+}
+
+export interface CreateDeviceCommand {
+  commandType: string;
+  payload: string;
+  correlationId?: string;
+}
+
+export interface DeviceCommand {
+  commandId: number;
+  deviceId: number;
+  commandType: string;
+  payload: string;
+  status: string;
+  correlationId?: string;
+  createdAt: string;
+  sentAt?: string;
+  completedAt?: string;
+  errorMessage?: string;
+  requestedBy?: string;
 }
 
 export interface Alert {

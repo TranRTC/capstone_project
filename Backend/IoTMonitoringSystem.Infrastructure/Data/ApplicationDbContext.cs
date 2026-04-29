@@ -18,6 +18,7 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<AlertRule> AlertRules { get; set; }
         public DbSet<Alert> Alerts { get; set; }
         public DbSet<DeviceConfiguration> DeviceConfigurations { get; set; }
+        public DbSet<DeviceCommand> DeviceCommands { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -90,6 +91,12 @@ namespace IoTMonitoringSystem.Infrastructure.Data
                 .HasForeignKey(dc => dc.DeviceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            modelBuilder.Entity<DeviceCommand>()
+                .HasOne(dc => dc.Device)
+                .WithMany(d => d.DeviceCommands)
+                .HasForeignKey(dc => dc.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // Indexes
             modelBuilder.Entity<SensorReading>()
                 .HasIndex(sr => new { sr.Timestamp, sr.DeviceId });
@@ -99,6 +106,12 @@ namespace IoTMonitoringSystem.Infrastructure.Data
 
             modelBuilder.Entity<DeviceStatusHistory>()
                 .HasIndex(dsh => new { dsh.DeviceId, dsh.Timestamp });
+
+            modelBuilder.Entity<DeviceCommand>()
+                .HasIndex(dc => new { dc.DeviceId, dc.CreatedAt });
+
+            modelBuilder.Entity<DeviceCommand>()
+                .HasIndex(dc => new { dc.DeviceId, dc.Status });
 
             modelBuilder.Entity<Device>()
                 .HasIndex(d => d.EdgeDeviceId)

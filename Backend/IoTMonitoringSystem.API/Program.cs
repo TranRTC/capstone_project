@@ -27,9 +27,12 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
 builder.Services.AddScoped<ISensorReadingRepository, SensorReadingRepository>();
 builder.Services.AddScoped<IAlertRepository, AlertRepository>();
+builder.Services.AddScoped<IDeviceCommandRepository, DeviceCommandRepository>();
+builder.Services.AddScoped<IDeviceConfigurationRepository, DeviceConfigurationRepository>();
 
 // Notification Service (SignalR)
 builder.Services.AddScoped<INotificationService, SignalRNotificationService>();
+builder.Services.AddScoped<IDeviceCommandDispatcher, MqttCommandDispatcher>();
 
 // Services
 builder.Services.AddScoped<IDeviceService, DeviceService>();
@@ -37,6 +40,8 @@ builder.Services.AddScoped<ISensorService, SensorService>();
 builder.Services.AddScoped<ISensorReadingService, SensorReadingService>();
 builder.Services.AddScoped<IAlertService, AlertService>();
 builder.Services.AddScoped<IAlertRuleService, AlertRuleService>();
+builder.Services.AddScoped<IDeviceCommandService, DeviceCommandService>();
+builder.Services.AddScoped<IDeviceConfigurationService, DeviceConfigurationService>();
 
 // SignalR with CORS support
 builder.Services.AddSignalR();
