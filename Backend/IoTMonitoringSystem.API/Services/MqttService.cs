@@ -13,13 +13,29 @@ using System.Text.Json;
 
 namespace IoTMonitoringSystem.API.Services
 {
-    public class MqttService : IHostedService
+    public class MqttService : BackgroundService, IMqttRuntimeState
     {
         private readonly ILogger<MqttService> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly IConfiguration _configuration;
         private IMqttClient? _mqttClient;
         private MqttClientOptions? _mqttClientOptions;
+        private readonly object _stateLock = new();
+        private bool _isConnected;
+        private bool _isSubscribed;
+        private DateTime? _lastConnectAttemptAtUtc;
+        private DateTime? _lastConnectedAtUtc;
+        private DateTime? _lastMessageReceivedAtUtc;
+        private int _reconnectAttempts;
+        private string? _lastError;
+
+        public bool IsConnected { get { lock (_stateLock) return _isConnected; } }
+        public bool IsSubscribed { get { lock (_stateLock) return _isSubscribed; } }
+        public DateTime? LastConnectAttemptAtUtc { get { lock (_stateLock) return _lastConnectAttemptAtUtc; } }
+        public DateTime? LastConnectedAtUtc { get { lock (_stateLock) return _lastConnectedAtUtc; } }
+        public DateTime? LastMessageReceivedAtUtc { get { lock (_stateLock) return _lastMessageReceivedAtUtc; } }
+        public int ReconnectAttempts { get { lock (_stateLock) return _reconnectAttempts; } }
+        public string? LastError { get { lock (_stateLock) return _lastError; } }
 
         public MqttService(
             ILogger<MqttService> logger,
@@ -31,7 +47,7 @@ namespace IoTMonitoringSystem.API.Services
             _configuration = configuration;
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var mqttHost = _configuration.GetValue<string>("Mqtt:Host", "localhost");
             var mqttPort = _configuration.GetValue<int>("Mqtt:Port", 1883);
@@ -44,33 +60,91 @@ namespace IoTMonitoringSystem.API.Services
                 .WithClientId("IoTMonitoringSystem_Server")
                 .Build();
 
+            _mqttClient.ConnectedAsync += args =>
+            {
+                lock (_stateLock)
+                {
+                    _isConnected = true;
+                    _lastConnectedAtUtc = DateTime.UtcNow;
+                    _lastError = null;
+                    _reconnectAttempts = 0;
+                }
+                _logger.LogInformation("Connected to MQTT broker at {Host}:{Port}", mqttHost, mqttPort);
+                return Task.CompletedTask;
+            };
+            _mqttClient.DisconnectedAsync += args =>
+            {
+                lock (_stateLock)
+                {
+                    _isConnected = false;
+                    _isSubscribed = false;
+                    _lastError = args.Exception?.Message ?? _lastError;
+                }
+                _logger.LogWarning(args.Exception, "MQTT disconnected. Will retry connection.");
+                return Task.CompletedTask;
+            };
             _mqttClient.ApplicationMessageReceivedAsync += OnMessageReceived;
 
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await _mqttClient.ConnectAsync(_mqttClientOptions, cancellationToken);
-                _logger.LogInformation($"Connected to MQTT broker at {mqttHost}:{mqttPort}");
+                try
+                {
+                    if (_mqttClient.IsConnected)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+                        continue;
+                    }
 
-                var subscribeOptions = factory.CreateSubscribeOptionsBuilder()
-                    .WithTopicFilter(f => f.WithTopic("devices/+/sensors/+/readings"))
-                    .WithTopicFilter(f => f.WithTopic("sensor/reading/+/+"))
-                    .WithTopicFilter(f => f.WithTopic("devices/+/commands/ack"))
-                    .Build();
+                    lock (_stateLock)
+                    {
+                        _lastConnectAttemptAtUtc = DateTime.UtcNow;
+                        _reconnectAttempts += 1;
+                    }
 
-                await _mqttClient.SubscribeAsync(subscribeOptions, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to connect to MQTT.");
+                    await _mqttClient.ConnectAsync(_mqttClientOptions, stoppingToken);
+
+                    var subscribeOptions = factory.CreateSubscribeOptionsBuilder()
+                        .WithTopicFilter(f => f.WithTopic("devices/+/sensors/+/readings"))
+                        .WithTopicFilter(f => f.WithTopic("sensor/reading/+/+"))
+                        .WithTopicFilter(f => f.WithTopic("devices/+/commands/ack"))
+                        .Build();
+
+                    await _mqttClient.SubscribeAsync(subscribeOptions, stoppingToken);
+                    lock (_stateLock)
+                    {
+                        _isSubscribed = true;
+                    }
+                    _logger.LogInformation("Subscribed to MQTT topics for readings and command acknowledgements.");
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    lock (_stateLock)
+                    {
+                        _isConnected = false;
+                        _isSubscribed = false;
+                        _lastError = ex.Message;
+                    }
+                    _logger.LogError(ex, "Failed to connect/subscribe to MQTT. Retrying in 5 seconds.");
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                }
             }
         }
 
-        public async Task StopAsync(CancellationToken cancellationToken)
+        public override async Task StopAsync(CancellationToken cancellationToken)
         {
             if (_mqttClient != null)
             {
-                await _mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
+                if (_mqttClient.IsConnected)
+                {
+                    await _mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
+                }
+                _mqttClient.Dispose();
             }
+            await base.StopAsync(cancellationToken);
         }
 
         private async Task OnMessageReceived(MqttApplicationMessageReceivedEventArgs args)
@@ -79,6 +153,11 @@ namespace IoTMonitoringSystem.API.Services
 
             // FIX: .ToArray() is needed because Payload is ReadOnlyMemory in v5.0
             var payload = args.ApplicationMessage.Payload.ToArray();
+            lock (_stateLock)
+            {
+                _lastMessageReceivedAtUtc = DateTime.UtcNow;
+                _lastError = null;
+            }
 
             _logger.LogInformation($"MQTT message received on topic: {topic}");
 

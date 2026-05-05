@@ -12,11 +12,16 @@ namespace IoTMonitoringSystem.API.Controllers
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<HealthController> _logger;
+        private readonly IMqttRuntimeState _mqttRuntimeState;
 
-        public HealthController(IConfiguration configuration, ILogger<HealthController> logger)
+        public HealthController(
+            IConfiguration configuration,
+            ILogger<HealthController> logger,
+            IMqttRuntimeState mqttRuntimeState)
         {
             _configuration = configuration;
             _logger = logger;
+            _mqttRuntimeState = mqttRuntimeState;
         }
 
         // GET: api/v1/health
@@ -74,6 +79,13 @@ namespace IoTMonitoringSystem.API.Controllers
                         port = mqttPort,
                         accessible = isPortAccessible,
                         mqttReady = isMqttReady,
+                        subscriberConnected = _mqttRuntimeState.IsConnected,
+                        subscriberSubscribed = _mqttRuntimeState.IsSubscribed,
+                        lastConnectAttemptAtUtc = _mqttRuntimeState.LastConnectAttemptAtUtc,
+                        lastConnectedAtUtc = _mqttRuntimeState.LastConnectedAtUtc,
+                        lastMessageReceivedAtUtc = _mqttRuntimeState.LastMessageReceivedAtUtc,
+                        reconnectAttempts = _mqttRuntimeState.ReconnectAttempts,
+                        subscriberLastError = _mqttRuntimeState.LastError,
                         timestamp = DateTime.UtcNow
                     }
                 });

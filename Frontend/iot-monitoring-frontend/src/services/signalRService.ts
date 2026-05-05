@@ -1,9 +1,10 @@
 import * as signalR from '@microsoft/signalr';
 import { SensorReading, Alert, Device } from '../types';
+import { runtimeConfig } from '../config/runtimeConfig';
 
 class SignalRService {
   private connection: signalR.HubConnection | null = null;
-  private readonly hubUrl = 'http://localhost:5000/monitoringhub';
+  private readonly hubUrl = runtimeConfig.signalRHubUrl;
 
   async start(): Promise<void> {
     if (this.connection?.state === signalR.HubConnectionState.Connected) {

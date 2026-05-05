@@ -333,61 +333,123 @@ const Dashboard: React.FC = () => {
         Dashboard
       </Typography>
 
-      <Paper sx={{ ...panelSx, mb: 3 }}>
-        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h6" component="h2" sx={{ mb: 2, fontWeight: 600 }}>
           System Status
         </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-          <Chip
-            icon={
-              apiHealthy === null
-                ? <Warning fontSize="small" />
-                : apiHealthy
-                  ? <CheckCircle fontSize="small" />
-                  : <ErrorIcon fontSize="small" />
-            }
-            label={
-              apiHealthy === null
-                ? 'API Checking'
-                : apiHealthy
-                  ? 'API Healthy'
-                  : 'API Down'
-            }
-            color={apiHealthy === null ? 'warning' : apiHealthy ? 'success' : 'error'}
-            size="small"
-          />
-          <Chip
-            icon={mqttChip.icon}
-            label={mqttChip.label}
-            color={mqttChip.color}
-            size="small"
-          />
-          <Chip
-            icon={signalRChip.icon}
-            label={signalRChip.label}
-            color={signalRChip.color}
-            size="small"
-          />
-          <Chip
-            icon={dataFlowChip.icon}
-            label={dataFlowChip.label}
-            color={dataFlowChip.color}
-            size="small"
-          />
-          <Tooltip title="Refresh system checks">
-            <span>
-              <IconButton size="small" onClick={checkSystemStatus} disabled={statusLoading}>
-                <Refresh fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
-            {lastStatusCheck
-              ? `Last check: ${lastStatusCheck.toLocaleTimeString()}`
-              : 'Checking...'}
-          </Typography>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              md: 'repeat(5, minmax(0, 1fr))',
+            },
+            gap: 3,
+            width: '100%',
+            alignItems: 'stretch',
+          }}
+        >
+          <Card sx={metricCardSx}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  API
+                </Typography>
+                {apiHealthy === null ? (
+                  <Warning fontSize="small" color="warning" />
+                ) : apiHealthy ? (
+                  <CheckCircle fontSize="small" color="success" />
+                ) : (
+                  <ErrorIcon fontSize="small" color="error" />
+                )}
+              </Box>
+              <Chip
+                icon={
+                  apiHealthy === null
+                    ? <Warning fontSize="small" />
+                    : apiHealthy
+                      ? <CheckCircle fontSize="small" />
+                      : <ErrorIcon fontSize="small" />
+                }
+                label={
+                  apiHealthy === null
+                    ? 'API Checking'
+                    : apiHealthy
+                      ? 'API Healthy'
+                      : 'API Down'
+                }
+                color={apiHealthy === null ? 'warning' : apiHealthy ? 'success' : 'error'}
+                sx={{ maxWidth: '100%' }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card sx={metricCardSx}>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 1 }}>
+                MQTT
+              </Typography>
+              <Chip
+                icon={mqttChip.icon}
+                label={mqttChip.label}
+                color={mqttChip.color}
+                sx={{ maxWidth: '100%' }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card sx={metricCardSx}>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 1 }}>
+                SignalR
+              </Typography>
+              <Chip
+                icon={signalRChip.icon}
+                label={signalRChip.label}
+                color={signalRChip.color}
+                sx={{ maxWidth: '100%' }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card sx={metricCardSx}>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 1 }}>
+                Data
+              </Typography>
+              <Chip
+                icon={dataFlowChip.icon}
+                label={dataFlowChip.label}
+                color={dataFlowChip.color}
+                sx={{ maxWidth: '100%' }}
+              />
+            </CardContent>
+          </Card>
+
+          <Card sx={metricCardSx}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Last check
+                </Typography>
+                <Tooltip title="Refresh system checks">
+                  <span>
+                    <IconButton size="small" onClick={checkSystemStatus} disabled={statusLoading} aria-label="Refresh status">
+                      <Refresh fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                {lastStatusCheck
+                  ? lastStatusCheck.toLocaleTimeString()
+                  : 'Checking...'}
+              </Typography>
+            </CardContent>
+          </Card>
         </Box>
-      </Paper>
+      </Box>
 
       {loadError && (
         <MuiAlert

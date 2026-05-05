@@ -49,26 +49,68 @@ builder.Services.AddScoped<IActuatorService, ActuatorService>();
 builder.Services.AddSignalR();
 
 // MQTT Service (Hosted Service)
-builder.Services.AddHostedService<MqttService>();
+builder.Services.AddSingleton<MqttService>();
+builder.Services.AddSingleton<IMqttRuntimeState>(sp => sp.GetRequiredService<MqttService>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttService>());
 
 // CORS - Must be configured before SignalR
 builder.Services.AddCors(options =>
 {
+    var allowedOrigins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins")
+        .Get<string[]>()?
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .ToArray()
+        ?? Array.Empty<string>();
+
     options.AddPolicy("AllowReactApp", policy =>
     {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+            return;
+        }
+
+        // Fallback for local development if no config is provided.
         policy.WithOrigins(
-                "http://localhost:3000", 
+                "http://localhost:3000",
                 "https://localhost:3000",
                 "http://localhost:5173",
                 "https://localhost:5173"
               )
-              .AllowAnyHeader()  // This allows all headers including x-requested-with
+              .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
     });
 });
 
 var app = builder.Build();
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupConfig");
+var mqttHost = app.Configuration.GetValue<string>("Mqtt:Host", "localhost");
+var mqttPort = app.Configuration.GetValue<int>("Mqtt:Port", 1883);
+var corsOrigins = app.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()?
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .ToArray()
+    ?? Array.Empty<string>();
+
+startupLogger.LogInformation(
+    "Startup configuration: MQTT {Host}:{Port}, CORS origins count {OriginCount}.",
+    mqttHost,
+    mqttPort,
+    corsOrigins.Length);
+if (corsOrigins.Length > 0)
+{
+    startupLogger.LogInformation("Configured CORS origins: {Origins}", string.Join(", ", corsOrigins));
+}
+else
+{
+    startupLogger.LogWarning("No Cors:AllowedOrigins configured; localhost fallback origins will be used.");
+}
 
 // Configure the HTTP request pipeline
 // CORS must come FIRST, before any other middleware that might redirect

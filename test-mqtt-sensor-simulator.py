@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MQTT Sensor Simulator
-Simulates IoT sensors sending data to MQTT broker
+MQTT Temperature Sensor Simulator
+Targets existing Temperature Sensor 1 by default.
 """
 
 import paho.mqtt.client as mqtt
@@ -16,6 +16,11 @@ from datetime import datetime
 MQTT_BROKER_HOST = "localhost"
 MQTT_BROKER_PORT = 1883
 
+# Existing default records in this project
+DEFAULT_DEVICE_ID = 1
+DEFAULT_SENSOR_ID = 1
+DEFAULT_SENSOR_LABEL = "Temperature Sensor 1"
+
 def create_sensor_client(sensor_id, device_id):
     """Create and configure MQTT client for a sensor"""
     client_id = f"sensor_{device_id}_{sensor_id}"
@@ -23,12 +28,12 @@ def create_sensor_client(sensor_id, device_id):
     
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
-            print(f"✓ Sensor {sensor_id} (Device {device_id}) connected to MQTT broker")
+            print(f"[OK] Sensor {sensor_id} (Device {device_id}) connected to MQTT broker")
         else:
-            print(f"✗ Sensor {sensor_id} failed to connect. Return code: {rc}")
+            print(f"[ERR] Sensor {sensor_id} failed to connect. Return code: {rc}")
     
     def on_publish(client, userdata, mid):
-        print(f"  → Message published by sensor {sensor_id} (mid: {mid})")
+        print(f"  [ACK] Message published by sensor {sensor_id} (mid: {mid})")
     
     client.on_connect = on_connect
     client.on_publish = on_publish
@@ -55,16 +60,22 @@ def send_sensor_reading(client, device_id, sensor_id, value, topic_format="devic
     result = client.publish(topic, json.dumps(payload), qos=1)
     
     if result.rc == mqtt.MQTT_ERR_SUCCESS:
-        print(f"  📤 Published to {topic}: value={value}")
+        print(f"  [PUB] Published to {topic}: value={value}")
         return True
     else:
-        print(f"  ✗ Failed to publish to {topic}")
+        print(f"  [ERR] Failed to publish to {topic}")
         return False
 
+def generate_temperature_value():
+    """Generate realistic temperature values in Celsius."""
+    return round(random.uniform(20.0, 30.0), 2)
+
+
 def simulate_sensor(device_id, sensor_id, interval=5, count=10, topic_format="devices"):
-    """Simulate a sensor sending readings at regular intervals"""
+    """Simulate a temperature sensor sending readings at regular intervals"""
     print(f"\n{'='*60}")
     print(f"Starting Sensor Simulator")
+    print(f"Sensor Target: {DEFAULT_SENSOR_LABEL}")
     print(f"Device ID: {device_id}, Sensor ID: {sensor_id}")
     print(f"Interval: {interval} seconds, Count: {count} readings")
     print(f"Topic Format: {topic_format}")
@@ -83,8 +94,8 @@ def simulate_sensor(device_id, sensor_id, interval=5, count=10, topic_format="de
         
         # Send readings
         for i in range(count):
-            # Generate random sensor value (0-100)
-            value = round(random.uniform(0, 100), 2)
+            # Generate realistic temperature value
+            value = generate_temperature_value()
             
             # Send reading
             send_sensor_reading(client, device_id, sensor_id, value, topic_format)
@@ -95,10 +106,10 @@ def simulate_sensor(device_id, sensor_id, interval=5, count=10, topic_format="de
         # Wait for all messages to be published
         time.sleep(2)
         
-        print(f"\n✓ Sent {count} readings from sensor {sensor_id}")
+        print(f"\n[OK] Sent {count} readings from sensor {sensor_id}")
         
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"[ERR] Error: {e}")
         return False
     finally:
         client.loop_stop()
@@ -123,18 +134,34 @@ def send_single_reading(device_id, sensor_id, value, topic_format="devices"):
         client.disconnect()
         return True
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print(f"[ERR] Error: {e}")
         return False
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MQTT Sensor Simulator")
-    parser.add_argument("--device-id", type=int, default=1, help="Device ID")
-    parser.add_argument("--sensor-id", type=int, default=1, help="Sensor ID")
+    parser = argparse.ArgumentParser(
+        description="MQTT Temperature Sensor Simulator (defaults to Temperature Sensor 1)"
+    )
+    parser.add_argument(
+        "--device-id",
+        type=int,
+        default=DEFAULT_DEVICE_ID,
+        help=f"Device ID (default: {DEFAULT_DEVICE_ID})"
+    )
+    parser.add_argument(
+        "--sensor-id",
+        type=int,
+        default=DEFAULT_SENSOR_ID,
+        help=f"Sensor ID (default: {DEFAULT_SENSOR_ID})"
+    )
     parser.add_argument("--value", type=float, help="Single value to send (if not provided, random values)")
     parser.add_argument("--interval", type=int, default=5, help="Interval between readings (seconds)")
     parser.add_argument("--count", type=int, default=10, help="Number of readings to send")
-    parser.add_argument("--topic-format", choices=["devices", "sensor"], default="devices",
-                       help="Topic format: 'devices' or 'sensor'")
+    parser.add_argument(
+        "--topic-format",
+        choices=["devices", "sensor"],
+        default="devices",
+        help="Topic format: 'devices' or 'sensor' (use 'devices' for backend ingestion)"
+    )
     
     args = parser.parse_args()
     

@@ -10,6 +10,8 @@ import {
   Tooltip,
   Slider,
   Alert,
+  TextField,
+  MenuItem,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import { ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
@@ -37,6 +39,8 @@ interface ChartDataPoint {
   value: number;
 }
 
+type TrendRange = 'live' | '10m' | '1h' | '24h' | 'custom';
+
 const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   deviceId,
   deviceName,
@@ -53,6 +57,10 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   const [currentValue, setCurrentValue] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [trendRange, setTrendRange] = useState<TrendRange>('live');
+  const [centerTimeInput, setCenterTimeInput] = useState('');
+  const [aroundMinutes, setAroundMinutes] = useState(5);
+  const [customWindow, setCustomWindow] = useState<{ startDate: string; endDate: string } | null>(null);
   
   // Zoom state - allow dynamic zoom control
   const [windowMode, setWindowMode] = useState<'time' | 'points'>(initialWindowMode);
@@ -102,17 +110,32 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   }, [deviceId, sensorId]);
 
   // Fetch recent temperature readings
-  const fetchRecentReadings = useCallback(async (sensorId: number) => {
+  const fetchRecentReadings = useCallback(async (sensorId: number, range: TrendRange) => {
     try {
       const endDate = new Date();
       const startDate = new Date();
-      startDate.setHours(startDate.getHours() - 1); // Last hour of data
+      if (range === '10m' || range === 'live') {
+        startDate.setMinutes(startDate.getMinutes() - 10);
+      } else if (range === '1h') {
+        startDate.setHours(startDate.getHours() - 1);
+      } else if (range === '24h') {
+        startDate.setHours(startDate.getHours() - 24);
+      }
+
+      const resolvedStartDate =
+        range === 'custom' && customWindow != null
+          ? customWindow.startDate
+          : startDate.toISOString();
+      const resolvedEndDate =
+        range === 'custom' && customWindow != null
+          ? customWindow.endDate
+          : endDate.toISOString();
 
       const result = await apiService.getSensorReadings({
         deviceId,
         sensorId,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
+        startDate: resolvedStartDate,
+        endDate: resolvedEndDate,
         pageSize: 100, // Get up to 100 recent readings
       });
 
@@ -128,6 +151,8 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       // Set current value to the latest reading
       if (readings.length > 0) {
         setCurrentValue(readings[readings.length - 1].value);
+      } else {
+        setCurrentValue(null);
       }
       setLoading(false);
     } catch (err: any) {
@@ -135,7 +160,19 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       setError('Failed to load sensor readings');
       setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, customWindow]);
+
+  const applyCenteredWindow = () => {
+    if (!centerTimeInput) return;
+
+    const center = new Date(centerTimeInput);
+    if (Number.isNaN(center.getTime())) return;
+
+    const start = new Date(center.getTime() - aroundMinutes * 60 * 1000);
+    const end = new Date(center.getTime() + aroundMinutes * 60 * 1000);
+    setCustomWindow({ startDate: start.toISOString(), endDate: end.toISOString() });
+    setTrendRange('custom');
+  };
 
   // Initialize: fetch sensor and readings
   useEffect(() => {
@@ -144,18 +181,18 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       setError(null);
       const sensor = await fetchTemperatureSensor();
       if (sensor) {
-        await fetchRecentReadings(sensor.sensorId);
+        await fetchRecentReadings(sensor.sensorId, trendRange);
       } else {
         setLoading(false);
       }
     };
 
     initialize();
-  }, [deviceId, sensorId, fetchTemperatureSensor, fetchRecentReadings]);
+  }, [deviceId, sensorId, trendRange, fetchTemperatureSensor, fetchRecentReadings]);
 
   // Set up SignalR for real-time updates
   useEffect(() => {
-    if (!temperatureSensor) return;
+    if (!temperatureSensor || trendRange !== 'live') return;
 
     const setupSignalR = async () => {
       try {
@@ -218,39 +255,101 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         signalRService.onSensorReading(handleNewReading);
 
         // Cleanup
-        return () => {
-          signalRService.off('SensorReadingReceived');
-        };
       } catch (err) {
         console.error('Error setting up SignalR:', err);
       }
     };
 
     setupSignalR();
-  }, [temperatureSensor, deviceId]);
+    return () => {
+      signalRService.off('SensorReadingReceived');
+    };
+  }, [temperatureSensor, deviceId, trendRange, windowMode, timeWindowMinutes, maxDataPoints]);
 
   const content = (
     <>
       {showPaper && (
-        <>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              {deviceName} — {temperatureSensor?.sensorName ?? 'Sensor'}
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
-                {windowMode === 'time' 
-                  ? timeWindowMinutes < 1 
-                    ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s` 
-                    : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
-                  : `Window: Last ${maxDataPoints} points`}
-              </Typography>
-            </Box>
-          </Box>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            {temperatureSensor?.sensorType}
-          </Typography>
-        </>
+        <Typography variant="h6" gutterBottom>
+          {deviceName} — {temperatureSensor?.sensorName ?? 'Sensor'}
+        </Typography>
+      )}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1, flexWrap: 'wrap' }}>
+        <ButtonGroup size="small" variant="outlined">
+          <Button
+            onClick={() => {
+              setTrendRange('live');
+              setCustomWindow(null);
+            }}
+            variant={trendRange === 'live' ? 'contained' : 'outlined'}
+          >
+            Live
+          </Button>
+          <Button
+            onClick={() => setTrendRange('10m')}
+            variant={trendRange === '10m' ? 'contained' : 'outlined'}
+          >
+            10m
+          </Button>
+          <Button
+            onClick={() => setTrendRange('1h')}
+            variant={trendRange === '1h' ? 'contained' : 'outlined'}
+          >
+            1h
+          </Button>
+          <Button
+            onClick={() => setTrendRange('24h')}
+            variant={trendRange === '24h' ? 'contained' : 'outlined'}
+          >
+            24h
+          </Button>
+        </ButtonGroup>
+        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+          {windowMode === 'time'
+            ? timeWindowMinutes < 1
+              ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s`
+              : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
+            : `Window: Last ${maxDataPoints} points`}
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          type="datetime-local"
+          label="At time"
+          value={centerTimeInput}
+          onChange={(e) => setCenterTimeInput(e.target.value)}
+          InputLabelProps={{ shrink: true }}
+        />
+        <TextField
+          select
+          size="small"
+          label="Around"
+          value={String(aroundMinutes)}
+          onChange={(e) => setAroundMinutes(Number(e.target.value))}
+          sx={{ minWidth: 120 }}
+        >
+          <MenuItem value="1">+/- 1m</MenuItem>
+          <MenuItem value="5">+/- 5m</MenuItem>
+          <MenuItem value="15">+/- 15m</MenuItem>
+          <MenuItem value="30">+/- 30m</MenuItem>
+          <MenuItem value="60">+/- 1h</MenuItem>
+        </TextField>
+        <Button
+          size="small"
+          variant="outlined"
+          onClick={applyCenteredWindow}
+          disabled={!centerTimeInput}
+        >
+          Show
+        </Button>
+      </Box>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+        Mode: {trendRange === 'live' ? 'Live updates' : trendRange === 'custom' ? `History (centered +/- ${aroundMinutes}m)` : `History (${trendRange})`}
+      </Typography>
+      {showPaper && (
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          {temperatureSensor?.sensorType}
+        </Typography>
       )}
       
       {/* Zoom Controls - Only show in time mode */}

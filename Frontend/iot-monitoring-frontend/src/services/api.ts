@@ -21,8 +21,9 @@ import {
   ApiResponse,
   PagedResult,
 } from '../types';
+import { runtimeConfig } from '../config/runtimeConfig';
 
-const API_BASE_URL = 'http://localhost:5000/api/v1';
+const API_BASE_URL = runtimeConfig.apiBaseUrl;
 
 class ApiService {
   private api: AxiosInstance;
