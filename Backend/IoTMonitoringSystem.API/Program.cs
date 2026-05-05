@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Infrastructure.Repositories;
 using IoTMonitoringSystem.Services;
@@ -7,6 +8,9 @@ using IoTMonitoringSystem.API.Services;
 using IoTMonitoringSystem.API.Hubs;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Azure env templates sometimes use Mqtt__BrokerHost / Mqtt__BrokerPort; runtime code reads Mqtt:Host / Mqtt:Port.
+ApplyMqttBrokerAliases(builder.Configuration);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(connectionString))
@@ -151,3 +155,24 @@ app.MapControllers();
 app.MapHub<MonitoringHub>("/monitoringhub");
 
 app.Run();
+
+static void ApplyMqttBrokerAliases(ConfigurationManager configuration)
+{
+    var patches = new Dictionary<string, string?>();
+    if (string.IsNullOrWhiteSpace(configuration["Mqtt:Host"]) &&
+        !string.IsNullOrWhiteSpace(configuration["Mqtt:BrokerHost"]))
+    {
+        patches["Mqtt:Host"] = configuration["Mqtt:BrokerHost"];
+    }
+
+    if (string.IsNullOrWhiteSpace(configuration["Mqtt:Port"]) &&
+        !string.IsNullOrWhiteSpace(configuration["Mqtt:BrokerPort"]))
+    {
+        patches["Mqtt:Port"] = configuration["Mqtt:BrokerPort"];
+    }
+
+    if (patches.Count > 0)
+    {
+        configuration.AddInMemoryCollection(patches);
+    }
+}
