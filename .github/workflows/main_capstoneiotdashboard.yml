@@ -26,15 +26,15 @@ jobs:
         with:
           dotnet-version: '8.x'
 
-      # One publish step: build + publish must be self-contained together.
-      # Using `build` then `publish --no-build` reuses a framework-dependent build and omits the runtime (502.5 / "No frameworks were found").
-      - name: dotnet publish (self-contained win-x86)
+      # Framework-dependent + win-x86: use the .NET 8 runtime already on the App Service worker (set Stack to .NET 8 in Azure).
+      # Avoids fragile self-contained + ANCM out-of-process startup (502.5) on Free tier.
+      - name: dotnet publish (framework-dependent win-x86)
         run: >
           dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj"
           -c Release
           -r win-x86
-          --self-contained true
-          -p:PublishReadyToRun=false
+          --self-contained false
+          -p:UseAppHost=false
           -o "${{ env.DOTNET_ROOT }}/myapp"
 
       - name: Upload artifact for deployment job
