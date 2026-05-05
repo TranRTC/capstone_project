@@ -13,15 +13,18 @@ namespace IoTMonitoringSystem.API.Controllers
         private readonly IConfiguration _configuration;
         private readonly ILogger<HealthController> _logger;
         private readonly IMqttRuntimeState _mqttRuntimeState;
+        private readonly IMqttIngestMetrics _mqttIngestMetrics;
 
         public HealthController(
             IConfiguration configuration,
             ILogger<HealthController> logger,
-            IMqttRuntimeState mqttRuntimeState)
+            IMqttRuntimeState mqttRuntimeState,
+            IMqttIngestMetrics mqttIngestMetrics)
         {
             _configuration = configuration;
             _logger = logger;
             _mqttRuntimeState = mqttRuntimeState;
+            _mqttIngestMetrics = mqttIngestMetrics;
         }
 
         // GET: api/v1/health
@@ -42,6 +45,10 @@ namespace IoTMonitoringSystem.API.Controllers
         {
             var mqttHost = _configuration.GetValue<string>("Mqtt:Host", "localhost");
             var mqttPort = _configuration.GetValue<int>("Mqtt:Port", 1883);
+            var mqttEnableTls = _configuration.GetValue<bool>("Mqtt:EnableTls", false);
+            var mqttAllowUntrustedTls = _configuration.GetValue<bool>("Mqtt:AllowUntrustedTls", false);
+            var mqttUsername = _configuration.GetValue<string>("Mqtt:Username");
+            var mqttPassword = _configuration.GetValue<string>("Mqtt:Password");
 
             try
             {
@@ -66,7 +73,13 @@ namespace IoTMonitoringSystem.API.Controllers
                 }
 
                 // Try to connect with MQTT client to verify MQTT protocol
-                bool isMqttReady = await CheckMqttConnectionAsync(mqttHost, mqttPort);
+                bool isMqttReady = await CheckMqttConnectionAsync(
+                    mqttHost,
+                    mqttPort,
+                    mqttEnableTls,
+                    mqttAllowUntrustedTls,
+                    mqttUsername,
+                    mqttPassword);
 
                 return Ok(new ApiResponse<object>
                 {
@@ -79,6 +92,8 @@ namespace IoTMonitoringSystem.API.Controllers
                         port = mqttPort,
                         accessible = isPortAccessible,
                         mqttReady = isMqttReady,
+                        tlsEnabled = mqttEnableTls,
+                        usernameConfigured = !string.IsNullOrWhiteSpace(mqttUsername),
                         subscriberConnected = _mqttRuntimeState.IsConnected,
                         subscriberSubscribed = _mqttRuntimeState.IsSubscribed,
                         lastConnectAttemptAtUtc = _mqttRuntimeState.LastConnectAttemptAtUtc,
@@ -86,6 +101,17 @@ namespace IoTMonitoringSystem.API.Controllers
                         lastMessageReceivedAtUtc = _mqttRuntimeState.LastMessageReceivedAtUtc,
                         reconnectAttempts = _mqttRuntimeState.ReconnectAttempts,
                         subscriberLastError = _mqttRuntimeState.LastError,
+                        metrics = new
+                        {
+                            totalMessagesReceived = _mqttIngestMetrics.TotalMessagesReceived,
+                            sensorReadingsPersisted = _mqttIngestMetrics.SensorReadingsPersisted,
+                            sensorReadingPersistErrors = _mqttIngestMetrics.SensorReadingPersistErrors,
+                            commandAcksProcessed = _mqttIngestMetrics.CommandAcksProcessed,
+                            commandAckErrors = _mqttIngestMetrics.CommandAckErrors,
+                            unknownTopicMessages = _mqttIngestMetrics.UnknownTopicMessages,
+                            lastReadingPersistedAtUtc = _mqttIngestMetrics.LastReadingPersistedAtUtc,
+                            lastAckProcessedAtUtc = _mqttIngestMetrics.LastAckProcessedAtUtc
+                        },
                         timestamp = DateTime.UtcNow
                     }
                 });
@@ -131,18 +157,39 @@ namespace IoTMonitoringSystem.API.Controllers
             }
         }
 
-        private async Task<bool> CheckMqttConnectionAsync(string host, int port)
+        private async Task<bool> CheckMqttConnectionAsync(
+            string host,
+            int port,
+            bool enableTls,
+            bool allowUntrustedTls,
+            string? username,
+            string? password)
         {
             try
             {
                 var factory = new MqttClientFactory();
                 using var mqttClient = factory.CreateMqttClient();
 
-                var options = new MqttClientOptionsBuilder()
+                var optionsBuilder = new MqttClientOptionsBuilder()
                     .WithTcpServer(host, port)
                     .WithClientId($"HealthCheck_{Guid.NewGuid()}")
-                    .WithTimeout(TimeSpan.FromSeconds(2))
-                    .Build();
+                    .WithTimeout(TimeSpan.FromSeconds(2));
+
+                if (!string.IsNullOrWhiteSpace(username))
+                {
+                    optionsBuilder = optionsBuilder.WithCredentials(username, password);
+                }
+
+                if (enableTls)
+                {
+                    optionsBuilder = optionsBuilder.WithTlsOptions(tls => tls.UseTls());
+                    if (allowUntrustedTls)
+                    {
+                        _logger.LogWarning("Mqtt:AllowUntrustedTls is enabled, but current MQTTnet TLS builder does not expose trust-bypass flags in this project version.");
+                    }
+                }
+
+                var options = optionsBuilder.Build();
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 await mqttClient.ConnectAsync(options, cts.Token);

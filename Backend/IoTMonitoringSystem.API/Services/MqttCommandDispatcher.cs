@@ -28,14 +28,32 @@ namespace IoTMonitoringSystem.API.Services
         {
             var mqttHost = _configuration.GetValue<string>("Mqtt:Host", "localhost");
             var mqttPort = _configuration.GetValue<int>("Mqtt:Port", 1883);
+            var mqttEnableTls = _configuration.GetValue<bool>("Mqtt:EnableTls", false);
+            var mqttAllowUntrustedTls = _configuration.GetValue<bool>("Mqtt:AllowUntrustedTls", false);
+            var mqttUsername = _configuration.GetValue<string>("Mqtt:Username");
+            var mqttPassword = _configuration.GetValue<string>("Mqtt:Password");
 
             var factory = new MqttClientFactory();
             using var mqttClient = factory.CreateMqttClient();
 
-            var options = new MqttClientOptionsBuilder()
+            var optionsBuilder = new MqttClientOptionsBuilder()
                 .WithTcpServer(mqttHost, mqttPort)
-                .WithClientId($"IoTMonitoringSystem_CommandDispatcher_{Guid.NewGuid():N}")
-                .Build();
+                .WithClientId($"IoTMonitoringSystem_CommandDispatcher_{Guid.NewGuid():N}");
+
+            if (!string.IsNullOrWhiteSpace(mqttUsername))
+            {
+                optionsBuilder = optionsBuilder.WithCredentials(mqttUsername, mqttPassword);
+            }
+            if (mqttEnableTls)
+            {
+                optionsBuilder = optionsBuilder.WithTlsOptions(tls => tls.UseTls());
+                if (mqttAllowUntrustedTls)
+                {
+                    _logger.LogWarning("Mqtt:AllowUntrustedTls is enabled, but current MQTTnet TLS builder does not expose trust-bypass flags in this project version.");
+                }
+            }
+
+            var options = optionsBuilder.Build();
 
             await mqttClient.ConnectAsync(options, cancellationToken);
 
@@ -49,7 +67,12 @@ namespace IoTMonitoringSystem.API.Services
                 .Build();
 
             await mqttClient.PublishAsync(message, cancellationToken);
-            _logger.LogInformation("Published command {CommandId} to topic {Topic}", command.CommandId, topic);
+            _logger.LogInformation(
+                "Published command {CommandId} to topic {Topic} (TLS={TlsEnabled}, UsernameConfigured={HasUsername})",
+                command.CommandId,
+                topic,
+                mqttEnableTls,
+                !string.IsNullOrWhiteSpace(mqttUsername));
 
             await mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
         }

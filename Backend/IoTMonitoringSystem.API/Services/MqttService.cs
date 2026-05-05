@@ -18,6 +18,7 @@ namespace IoTMonitoringSystem.API.Services
         private readonly ILogger<MqttService> _logger;
         private readonly IServiceProvider _serviceProvider;
         private readonly IConfiguration _configuration;
+        private readonly IMqttIngestMetrics _metrics;
         private IMqttClient? _mqttClient;
         private MqttClientOptions? _mqttClientOptions;
         private readonly object _stateLock = new();
@@ -40,25 +41,46 @@ namespace IoTMonitoringSystem.API.Services
         public MqttService(
             ILogger<MqttService> logger,
             IServiceProvider serviceProvider,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IMqttIngestMetrics metrics)
         {
             _logger = logger;
             _serviceProvider = serviceProvider;
             _configuration = configuration;
+            _metrics = metrics;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var mqttHost = _configuration.GetValue<string>("Mqtt:Host", "localhost");
             var mqttPort = _configuration.GetValue<int>("Mqtt:Port", 1883);
+            var mqttEnableTls = _configuration.GetValue<bool>("Mqtt:EnableTls", false);
+            var mqttAllowUntrustedTls = _configuration.GetValue<bool>("Mqtt:AllowUntrustedTls", false);
+            var mqttUsername = _configuration.GetValue<string>("Mqtt:Username");
+            var mqttPassword = _configuration.GetValue<string>("Mqtt:Password");
 
             var factory = new MqttClientFactory();
             _mqttClient = factory.CreateMqttClient();
 
-            _mqttClientOptions = new MqttClientOptionsBuilder()
+            var optionsBuilder = new MqttClientOptionsBuilder()
                 .WithTcpServer(mqttHost, mqttPort)
-                .WithClientId("IoTMonitoringSystem_Server")
-                .Build();
+                .WithClientId("IoTMonitoringSystem_Server");
+
+            if (!string.IsNullOrWhiteSpace(mqttUsername))
+            {
+                optionsBuilder = optionsBuilder.WithCredentials(mqttUsername, mqttPassword);
+            }
+
+            if (mqttEnableTls)
+            {
+                optionsBuilder = optionsBuilder.WithTlsOptions(tls => tls.UseTls());
+                if (mqttAllowUntrustedTls)
+                {
+                    _logger.LogWarning("Mqtt:AllowUntrustedTls is enabled, but current MQTTnet TLS builder does not expose trust-bypass flags in this project version.");
+                }
+            }
+
+            _mqttClientOptions = optionsBuilder.Build();
 
             _mqttClient.ConnectedAsync += args =>
             {
@@ -69,7 +91,12 @@ namespace IoTMonitoringSystem.API.Services
                     _lastError = null;
                     _reconnectAttempts = 0;
                 }
-                _logger.LogInformation("Connected to MQTT broker at {Host}:{Port}", mqttHost, mqttPort);
+                _logger.LogInformation(
+                    "Connected to MQTT broker at {Host}:{Port} (TLS={TlsEnabled}, UsernameConfigured={HasUsername})",
+                    mqttHost,
+                    mqttPort,
+                    mqttEnableTls,
+                    !string.IsNullOrWhiteSpace(mqttUsername));
                 return Task.CompletedTask;
             };
             _mqttClient.DisconnectedAsync += args =>
@@ -158,6 +185,7 @@ namespace IoTMonitoringSystem.API.Services
                 _lastMessageReceivedAtUtc = DateTime.UtcNow;
                 _lastError = null;
             }
+            _metrics.IncrementMessagesReceived();
 
             _logger.LogInformation($"MQTT message received on topic: {topic}");
 
@@ -189,6 +217,8 @@ namespace IoTMonitoringSystem.API.Services
                     }
                 }
 
+                _metrics.IncrementUnknownTopicMessages();
+                _logger.LogWarning("Received MQTT message on unsupported topic format: {Topic}", topic);
                 await ProcessJsonSensorReading(payload);
             }
             catch (Exception ex)
@@ -218,9 +248,11 @@ namespace IoTMonitoringSystem.API.Services
                 using var scope = _serviceProvider.CreateScope();
                 var service = scope.ServiceProvider.GetRequiredService<ISensorReadingService>();
                 await service.CreateReadingAsync(readingDto);
+                _metrics.IncrementSensorReadingsPersisted();
             }
             catch (Exception ex)
             {
+                _metrics.IncrementSensorReadingPersistErrors();
                 _logger.LogError(ex, "Error saving sensor reading.");
             }
         }
@@ -246,10 +278,12 @@ namespace IoTMonitoringSystem.API.Services
                     using var scope = _serviceProvider.CreateScope();
                     var service = scope.ServiceProvider.GetRequiredService<ISensorReadingService>();
                     await service.CreateReadingAsync(readingDto);
+                    _metrics.IncrementSensorReadingsPersisted();
                 }
             }
             catch (Exception ex)
             {
+                _metrics.IncrementSensorReadingPersistErrors();
                 _logger.LogError(ex, "Error processing JSON payload.");
             }
         }
@@ -299,6 +333,7 @@ namespace IoTMonitoringSystem.API.Services
 
                 var commandService = scope.ServiceProvider.GetRequiredService<IDeviceCommandService>();
                 await commandService.UpdateCommandStatusAsync(commandId, status, errorMessage);
+                _metrics.IncrementCommandAcksProcessed();
 
                 _logger.LogInformation(
                     "Processed command ACK for command {CommandId}, device {DeviceId}, status {Status}",
@@ -308,6 +343,7 @@ namespace IoTMonitoringSystem.API.Services
             }
             catch (Exception ex)
             {
+                _metrics.IncrementCommandAckErrors();
                 _logger.LogError(ex, "Error processing command ACK for device {DeviceId}.", deviceId);
             }
         }

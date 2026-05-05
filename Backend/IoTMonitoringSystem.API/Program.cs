@@ -49,6 +49,7 @@ builder.Services.AddScoped<IActuatorService, ActuatorService>();
 builder.Services.AddSignalR();
 
 // MQTT Service (Hosted Service)
+builder.Services.AddSingleton<IMqttIngestMetrics, MqttIngestMetrics>();
 builder.Services.AddSingleton<MqttService>();
 builder.Services.AddSingleton<IMqttRuntimeState>(sp => sp.GetRequiredService<MqttService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttService>());
@@ -91,6 +92,8 @@ var app = builder.Build();
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupConfig");
 var mqttHost = app.Configuration.GetValue<string>("Mqtt:Host", "localhost");
 var mqttPort = app.Configuration.GetValue<int>("Mqtt:Port", 1883);
+var mqttEnableTls = app.Configuration.GetValue<bool>("Mqtt:EnableTls", false);
+var mqttUsername = app.Configuration.GetValue<string>("Mqtt:Username");
 var corsOrigins = app.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>()?
@@ -99,10 +102,16 @@ var corsOrigins = app.Configuration
     ?? Array.Empty<string>();
 
 startupLogger.LogInformation(
-    "Startup configuration: MQTT {Host}:{Port}, CORS origins count {OriginCount}.",
+    "Startup configuration: MQTT {Host}:{Port} (TLS={TlsEnabled}, UsernameConfigured={HasUsername}), CORS origins count {OriginCount}.",
     mqttHost,
     mqttPort,
+    mqttEnableTls,
+    !string.IsNullOrWhiteSpace(mqttUsername),
     corsOrigins.Length);
+if (!app.Environment.IsDevelopment() && !mqttEnableTls)
+{
+    startupLogger.LogWarning("Production/staging environment detected with MQTT TLS disabled. Enable Mqtt:EnableTls for secure transport.");
+}
 if (corsOrigins.Length > 0)
 {
     startupLogger.LogInformation("Configured CORS origins: {Origins}", string.Join(", ", corsOrigins));
