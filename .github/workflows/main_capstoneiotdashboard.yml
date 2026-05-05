@@ -24,7 +24,7 @@ jobs:
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '10.x'
 
       - name: Restore
         run: dotnet restore "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj"
@@ -33,7 +33,7 @@ jobs:
         run: dotnet build "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" --configuration Release --no-restore
 
       - name: dotnet publish
-        run: dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" -c Release -o "${{env.DOTNET_ROOT}}/myapp" --no-build
+        run: dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" -c Release -r win-x86 --self-contained true -o "${{env.DOTNET_ROOT}}/myapp" --no-build
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
