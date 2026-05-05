@@ -5,8 +5,6 @@ import {
   Typography,
   Paper,
   Grid,
-  Card,
-  CardContent,
   Button,
   Chip,
   Skeleton,
@@ -18,10 +16,37 @@ import {
   Switch,
   Slider,
   TextField,
-  Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  IconButton,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { apiService } from '../services/api';
-import { Device, DeviceCommand, DeviceConfiguration } from '../types';
+import DeviceTemperatureChart from '../components/charts/DeviceTemperatureChart';
+import SensorForm, { SensorFormValues } from '../components/sensor/SensorForm';
+import {
+  Device,
+  DeviceCommand,
+  DeviceConfiguration,
+  Actuator,
+  Sensor,
+  CreateActuator,
+  CreateSensor,
+} from '../types';
 
 const panelSx = {
   p: 2.5,
@@ -31,6 +56,58 @@ const panelSx = {
   bgcolor: 'background.paper',
 };
 
+/** Aligns section title rows (device / sensors / actuators). */
+const sectionHeaderSx = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  mb: 2,
+  flexWrap: 'wrap',
+  gap: 1,
+  minHeight: 36,
+};
+
+/** Uniform Active/Inactive chip (device header + table Status column). */
+const statusChipSx = {
+  height: 24,
+  minWidth: 72,
+  '& .MuiChip-label': { px: 1.25, lineHeight: 1.25 },
+};
+
+/** Vertically center cell content when name/kind columns wrap to multiple lines. */
+const tableAlignSx = {
+  minWidth: 560,
+  '& .MuiTableCell-root': {
+    verticalAlign: 'middle',
+  },
+  '& .MuiTableCell-head': {
+    verticalAlign: 'bottom',
+  },
+};
+
+function sensorToFormValues(s: Sensor): SensorFormValues {
+  return {
+    sensorName: s.sensorName,
+    sensorType: s.sensorType,
+    unit: s.unit ?? '',
+    edgeDeviceId: s.edgeDeviceId ?? '',
+    minValue: s.minValue ?? undefined,
+    maxValue: s.maxValue ?? undefined,
+    isActive: s.isActive,
+  };
+}
+
+function toSensorCreatePayload(v: SensorFormValues): CreateSensor {
+  return {
+    sensorName: v.sensorName.trim(),
+    sensorType: v.sensorType.trim(),
+    unit: v.unit?.trim() || undefined,
+    edgeDeviceId: v.edgeDeviceId?.trim() || undefined,
+    minValue: v.minValue,
+    maxValue: v.maxValue,
+  };
+}
+
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -38,14 +115,11 @@ const DeviceDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestCommand, setLatestCommand] = useState<DeviceCommand | null>(null);
-  const [deviceConfigurations, setDeviceConfigurations] = useState<DeviceConfiguration[]>([]);
   const [commandLoading, setCommandLoading] = useState(false);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [commandSuccess, setCommandSuccess] = useState<string | null>(null);
   const [powerTarget, setPowerTarget] = useState(false);
   const [analogTarget, setAnalogTarget] = useState(50);
-  const [configSaving, setConfigSaving] = useState(false);
-  const [configMessage, setConfigMessage] = useState<string | null>(null);
   const [capabilityDraft, setCapabilityDraft] = useState({
     supportsTelemetry: true,
     supportsPowerControl: false,
@@ -55,6 +129,32 @@ const DeviceDetailPage: React.FC = () => {
     analogStep: 1,
     controlUnit: '',
   });
+
+  const [actuators, setActuators] = useState<Actuator[]>([]);
+  const [sensors, setSensors] = useState<Sensor[]>([]);
+  const [feedbackBySensorId, setFeedbackBySensorId] = useState<Record<number, number | undefined>>({});
+  const [powerByActuatorId, setPowerByActuatorId] = useState<Record<number, boolean>>({});
+  const [analogByActuatorId, setAnalogByActuatorId] = useState<Record<number, number>>({});
+  const [actuatorDialogOpen, setActuatorDialogOpen] = useState(false);
+  const [actuatorEditingId, setActuatorEditingId] = useState<number | null>(null);
+  const [actuatorForm, setActuatorForm] = useState<CreateActuator>({
+    name: '',
+    description: '',
+    kind: 'Discrete',
+    channel: '',
+    analogMin: undefined,
+    analogMax: undefined,
+    controlUnit: '',
+    feedbackSensorId: undefined,
+  });
+  const [actuatorSaving, setActuatorSaving] = useState(false);
+  /** Live chart dialog for one sensor */
+  const [sensorChartSensorId, setSensorChartSensorId] = useState<number | null>(null);
+  /** Control + feedback dialog for one actuator */
+  const [actuatorControlTarget, setActuatorControlTarget] = useState<Actuator | null>(null);
+  const [sensorFormOpen, setSensorFormOpen] = useState(false);
+  const [editingSensor, setEditingSensor] = useState<Sensor | null>(null);
+  const [feedbackLinkSavingId, setFeedbackLinkSavingId] = useState<number | null>(null);
 
   const buildCapabilityModel = (configs: DeviceConfiguration[], deviceType?: string) => {
     const lowered = (deviceType ?? '').toLowerCase();
@@ -103,17 +203,61 @@ const DeviceDetailPage: React.FC = () => {
     loadDevice(deviceId);
   }, [id]);
 
+  const refreshFeedbackForActuators = async (list: Actuator[]) => {
+    const ids = Array.from(
+      new Set(list.map((a) => a.feedbackSensorId).filter((x): x is number => x != null && x > 0))
+    );
+    if (ids.length === 0) {
+      setFeedbackBySensorId({});
+      return;
+    }
+    const next: Record<number, number | undefined> = {};
+    await Promise.all(
+      ids.map(async (sensorId) => {
+        try {
+          const page = await apiService.getSensorReadings({
+            sensorId,
+            pageNumber: 1,
+            pageSize: 1,
+          });
+          next[sensorId] = page.items[0]?.value;
+        } catch {
+          next[sensorId] = undefined;
+        }
+      })
+    );
+    setFeedbackBySensorId(next);
+  };
+
   const loadDevice = async (deviceId: number) => {
     try {
       setLoading(true);
       setError(null);
-      const deviceData = await apiService.getDevice(deviceId);
-      const configs = await apiService.getDeviceConfigurations(deviceId);
+      const [deviceData, configs, sensorList, actuatorList] = await Promise.all([
+        apiService.getDevice(deviceId),
+        apiService.getDeviceConfigurations(deviceId),
+        apiService.getSensorsByDevice(deviceId),
+        apiService.getActuatorsByDevice(deviceId),
+      ]);
       const capabilities = buildCapabilityModel(configs, deviceData.deviceType);
       setDevice(deviceData);
-      setDeviceConfigurations(configs);
+      setSensors(sensorList);
+      setActuators(actuatorList);
       setAnalogTarget(capabilities.analogMin);
       setCapabilityDraft(capabilities);
+
+      const powerInit: Record<number, boolean> = {};
+      const analogInit: Record<number, number> = {};
+      actuatorList.forEach((a) => {
+        powerInit[a.actuatorId] = false;
+        analogInit[a.actuatorId] =
+          a.kind.toLowerCase() === 'analog' ? (a.analogMin ?? 0) : 0;
+      });
+      setPowerByActuatorId(powerInit);
+      setAnalogByActuatorId(analogInit);
+
+      await refreshFeedbackForActuators(actuatorList);
+
       if (capabilities.supportsPowerControl || capabilities.supportsAnalogControl) {
         await refreshLatestCommand(deviceData.deviceId);
       } else {
@@ -122,7 +266,8 @@ const DeviceDetailPage: React.FC = () => {
     } catch (err: any) {
       console.error('Error loading device:', err);
       setDevice(null);
-      setDeviceConfigurations([]);
+      setActuators([]);
+      setSensors([]);
       setError(err.message || 'Failed to load device');
     } finally {
       setLoading(false);
@@ -179,37 +324,199 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
-  const parsedId = id ? Number.parseInt(id, 10) : NaN;
-  const canRetry = Number.isFinite(parsedId);
-  const capabilities = buildCapabilityModel(deviceConfigurations, device?.deviceType);
-  const isControllableDevice = capabilityDraft.supportsPowerControl || capabilityDraft.supportsAnalogControl;
-
-  const saveCapabilities = async () => {
+  const submitActuatorPower = async (actuator: Actuator, on: boolean) => {
     if (!device) return;
     try {
-      setConfigSaving(true);
-      setConfigMessage(null);
-      await apiService.updateDeviceConfigurations(device.deviceId, [
-        { configurationKey: 'supportsTelemetry', configurationValue: String(capabilityDraft.supportsTelemetry), valueType: 'bool' },
-        { configurationKey: 'supportsPowerControl', configurationValue: String(capabilityDraft.supportsPowerControl), valueType: 'bool' },
-        { configurationKey: 'supportsAnalogControl', configurationValue: String(capabilityDraft.supportsAnalogControl), valueType: 'bool' },
-        { configurationKey: 'analogMin', configurationValue: String(capabilityDraft.analogMin), valueType: 'number' },
-        { configurationKey: 'analogMax', configurationValue: String(capabilityDraft.analogMax), valueType: 'number' },
-        { configurationKey: 'analogStep', configurationValue: String(capabilityDraft.analogStep), valueType: 'number' },
-        { configurationKey: 'controlUnit', configurationValue: capabilityDraft.controlUnit, valueType: 'string' },
-      ]);
-      const latestConfigs = await apiService.getDeviceConfigurations(device.deviceId);
-      setDeviceConfigurations(latestConfigs);
-      const updated = buildCapabilityModel(latestConfigs, device.deviceType);
-      setCapabilityDraft(updated);
-      setAnalogTarget(updated.analogMin);
-      setConfigMessage('Capabilities saved.');
+      setCommandLoading(true);
+      setCommandError(null);
+      setCommandSuccess(null);
+      const command = await apiService.createDeviceCommand(device.deviceId, {
+        commandType: 'SetPower',
+        payload: JSON.stringify({ on }),
+        actuatorId: actuator.actuatorId,
+        correlationId: `ui-act-${actuator.actuatorId}-pwr-${Date.now()}`,
+      });
+      setLatestCommand(command);
+      setPowerByActuatorId((p) => ({ ...p, [actuator.actuatorId]: on }));
+      setCommandSuccess(`Command sent to "${actuator.name}" (${command.status}).`);
+      await refreshFeedbackForActuators(actuators);
     } catch (err: any) {
-      setConfigMessage(err.message || 'Failed to save capabilities.');
+      setCommandError(err.message || 'Failed to send command.');
+      setPowerByActuatorId((p) => ({ ...p, [actuator.actuatorId]: !on }));
     } finally {
-      setConfigSaving(false);
+      setCommandLoading(false);
     }
   };
+
+  const submitActuatorValue = async (actuator: Actuator) => {
+    if (!device) return;
+    const value = analogByActuatorId[actuator.actuatorId] ?? 0;
+    try {
+      setCommandLoading(true);
+      setCommandError(null);
+      setCommandSuccess(null);
+      const command = await apiService.createDeviceCommand(device.deviceId, {
+        commandType: 'SetValue',
+        payload: JSON.stringify({ value }),
+        actuatorId: actuator.actuatorId,
+        correlationId: `ui-act-${actuator.actuatorId}-val-${Date.now()}`,
+      });
+      setLatestCommand(command);
+      setCommandSuccess(`SetValue sent to "${actuator.name}" (${command.status}).`);
+      await refreshFeedbackForActuators(actuators);
+    } catch (err: any) {
+      setCommandError(err.message || 'Failed to send command.');
+    } finally {
+      setCommandLoading(false);
+    }
+  };
+
+  const openActuatorDialog = (mode: 'add' | 'edit', target?: Actuator) => {
+    if (mode === 'add') {
+      setActuatorEditingId(null);
+      setActuatorForm({
+        name: '',
+        description: '',
+        kind: 'Discrete',
+        channel: '',
+        analogMin: undefined,
+        analogMax: undefined,
+        controlUnit: '',
+        feedbackSensorId: undefined,
+      });
+    } else if (target) {
+      setActuatorEditingId(target.actuatorId);
+      setActuatorForm({
+        name: target.name,
+        description: target.description ?? '',
+        kind: target.kind,
+        channel: target.channel ?? '',
+        analogMin: target.analogMin,
+        analogMax: target.analogMax,
+        controlUnit: target.controlUnit ?? '',
+        feedbackSensorId: target.feedbackSensorId,
+      });
+    }
+    setActuatorDialogOpen(true);
+  };
+
+  const saveActuatorDialog = async () => {
+    if (!device) return;
+    const name = actuatorForm.name.trim();
+    if (!name) {
+      setCommandError('Actuator name is required.');
+      return;
+    }
+    try {
+      setActuatorSaving(true);
+      setCommandError(null);
+      const payload: CreateActuator = {
+        name,
+        description: actuatorForm.description?.trim() || undefined,
+        kind: actuatorForm.kind,
+        channel: actuatorForm.channel?.trim() || undefined,
+        analogMin: actuatorForm.kind === 'Analog' ? actuatorForm.analogMin : undefined,
+        analogMax: actuatorForm.kind === 'Analog' ? actuatorForm.analogMax : undefined,
+        controlUnit: actuatorForm.kind === 'Analog' ? actuatorForm.controlUnit?.trim() || undefined : undefined,
+        feedbackSensorId: actuatorForm.feedbackSensorId || undefined,
+      };
+      if (actuatorEditingId == null) {
+        await apiService.createActuator(device.deviceId, payload);
+      } else {
+        await apiService.updateActuator(device.deviceId, actuatorEditingId, payload);
+      }
+      setActuatorDialogOpen(false);
+      await loadDevice(device.deviceId);
+    } catch (err: any) {
+      setCommandError(err.message || 'Failed to save actuator.');
+    } finally {
+      setActuatorSaving(false);
+    }
+  };
+
+  const deleteActuator = async (actuator: Actuator) => {
+    if (!device) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Delete actuator "${actuator.name}"?`)) return;
+    try {
+      setCommandError(null);
+      await apiService.deleteActuator(device.deviceId, actuator.actuatorId);
+      await loadDevice(device.deviceId);
+    } catch (err: any) {
+      setCommandError(err.message || 'Failed to delete actuator (commands may still reference it).');
+    }
+  };
+
+  const closeSensorForm = () => {
+    setSensorFormOpen(false);
+    setEditingSensor(null);
+  };
+
+  const handleSubmitSensorForm = async (values: SensorFormValues) => {
+    if (!device) return;
+    if (editingSensor) {
+      await apiService.updateSensor(editingSensor.sensorId, {
+        ...toSensorCreatePayload(values),
+        isActive: values.isActive,
+      });
+    } else {
+      await apiService.createSensor(device.deviceId, toSensorCreatePayload(values));
+    }
+    closeSensorForm();
+    await loadDevice(device.deviceId);
+  };
+
+  const openSensorForm = (mode: 'add' | 'edit', target?: Sensor) => {
+    if (mode === 'add') {
+      setEditingSensor(null);
+    } else if (target) {
+      setEditingSensor(target);
+    }
+    setSensorFormOpen(true);
+  };
+
+  const deleteSensorRow = async (s: Sensor) => {
+    if (!device) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(`Delete sensor "${s.sensorName}"? This cannot be undone.`)) return;
+    try {
+      setCommandError(null);
+      await apiService.deleteSensor(s.sensorId);
+      if (sensorChartSensorId === s.sensorId) {
+        setSensorChartSensorId(null);
+      }
+      await loadDevice(device.deviceId);
+    } catch (err: any) {
+      setCommandError(err.message || 'Failed to delete sensor.');
+    }
+  };
+
+  const sensorLabel = (sensorId?: number) => {
+    if (!sensorId) return '';
+    const s = sensors.find((x) => x.sensorId === sensorId);
+    return s ? `${s.sensorName} (#${sensorId})` : `#${sensorId}`;
+  };
+
+  const handleFeedbackSensorChange = async (actuator: Actuator, feedbackSensorId: number | undefined) => {
+    if (!device) return;
+    try {
+      setCommandError(null);
+      setFeedbackLinkSavingId(actuator.actuatorId);
+      await apiService.updateActuator(device.deviceId, actuator.actuatorId, {
+        feedbackSensorId,
+      });
+      await loadDevice(device.deviceId);
+    } catch (err: any) {
+      setCommandError(err.message || 'Failed to link feedback sensor.');
+    } finally {
+      setFeedbackLinkSavingId(null);
+    }
+  };
+
+  const parsedId = id ? Number.parseInt(id, 10) : NaN;
+  const canRetry = Number.isFinite(parsedId);
+  const isControllableDevice = capabilityDraft.supportsPowerControl || capabilityDraft.supportsAnalogControl;
+  const useLegacyDeviceControl = isControllableDevice && actuators.length === 0;
 
   if (loading) {
     return (
@@ -272,81 +579,313 @@ const DeviceDetailPage: React.FC = () => {
         <Typography color="text.primary">{device.deviceName}</Typography>
       </Breadcrumbs>
 
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 640 }}>
-        Device profile below. Live readings and charts are tied to sensors —{' '}
-        <Link component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} underline="hover">
-          open Sensors for this device
-        </Link>
-        .
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+        Operator view: each sensor opens a <strong>live chart</strong>; each actuator opens <strong>control</strong> with feedback.
+        Edit definitions on the{' '}
+        <Link component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} underline="hover">Sensors</Link>
+        {' '}and{' '}
+        <Link component={RouterLink} to={`/actuators?deviceId=${device.deviceId}`} underline="hover">Actuators</Link> tabs.
       </Typography>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12}>
+          <Paper
+            sx={{
+              ...panelSx,
+              p: 1.75,
+            }}
+          >
+            <Box sx={sectionHeaderSx}>
+              <Typography variant="h6" component="h1" sx={{ fontWeight: 700, lineHeight: 1.25 }}>
+                {device.deviceName}
+              </Typography>
+              <Chip
+                label={device.isActive ? 'Active' : 'Inactive'}
+                color={device.isActive ? 'success' : 'default'}
+                size="small"
+                sx={statusChipSx}
+              />
+            </Box>
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr 1fr',
+                  sm: 'repeat(3, minmax(0, 1fr))',
+                  md: 'repeat(4, minmax(0, 1fr))',
+                },
+                gap: { xs: 1.25, sm: 1.5 },
+                columnGap: 2,
+                rowGap: 1.25,
+              }}
+            >
+              {[
+                { label: 'Device ID', value: String(device.deviceId) },
+                { label: 'Device Type', value: device.deviceType },
+                ...(device.location ? [{ label: 'Location', value: device.location }] : []),
+                ...(device.facilityType ? [{ label: 'Facility Type', value: device.facilityType }] : []),
+                ...(device.edgeDeviceType ? [{ label: 'Edge Type', value: device.edgeDeviceType }] : []),
+                ...(device.edgeDeviceId ? [{ label: 'Edge ID', value: device.edgeDeviceId }] : []),
+                {
+                  label: 'Last Seen',
+                  value: device.lastSeenAt
+                    ? new Date(device.lastSeenAt).toLocaleString()
+                    : 'Never',
+                },
+                {
+                  label: 'Created',
+                  value: new Date(device.createdAt).toLocaleString(),
+                },
+              ].map((row) => (
+                <Box key={row.label} sx={{ minWidth: 0 }}>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ lineHeight: 1.2 }}>
+                    {row.label}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      fontWeight: 600,
+                      mt: 0.25,
+                      lineHeight: 1.35,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {row.value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12}>
           <Paper sx={panelSx}>
-            <Typography variant="h6" sx={{ mb: 1 }}>
-              Capability Profile
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
-              <Chip
-                size="small"
-                color={capabilityDraft.supportsTelemetry ? 'success' : 'default'}
-                label={`Telemetry: ${capabilityDraft.supportsTelemetry ? 'On' : 'Off'}`}
-              />
-              <Chip
-                size="small"
-                color={capabilityDraft.supportsPowerControl ? 'success' : 'default'}
-                label={`Power Control: ${capabilityDraft.supportsPowerControl ? 'On' : 'Off'}`}
-              />
-              <Chip
-                size="small"
-                color={capabilityDraft.supportsAnalogControl ? 'success' : 'default'}
-                label={`Analog Control: ${capabilityDraft.supportsAnalogControl ? 'On' : 'Off'}`}
-              />
-              {capabilityDraft.supportsAnalogControl && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`Range: ${capabilityDraft.analogMin} - ${capabilityDraft.analogMax} (step ${capabilityDraft.analogStep})${capabilityDraft.controlUnit ? ` ${capabilityDraft.controlUnit}` : ''}`}
-                />
-              )}
-            </Box>
-            <Divider sx={{ my: 1.5 }} />
-            <Typography variant="subtitle2" sx={{ mb: 1 }}>Edit Capabilities</Typography>
-            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 1.5 }}>
-              <FormControlLabel
-                control={<Switch checked={capabilityDraft.supportsTelemetry} onChange={(_, v) => setCapabilityDraft((p) => ({ ...p, supportsTelemetry: v }))} />}
-                label="Telemetry"
-              />
-              <FormControlLabel
-                control={<Switch checked={capabilityDraft.supportsPowerControl} onChange={(_, v) => setCapabilityDraft((p) => ({ ...p, supportsPowerControl: v }))} />}
-                label="Power Control"
-              />
-              <FormControlLabel
-                control={<Switch checked={capabilityDraft.supportsAnalogControl} onChange={(_, v) => setCapabilityDraft((p) => ({ ...p, supportsAnalogControl: v }))} />}
-                label="Analog Control"
-              />
-            </Stack>
-            {capabilityDraft.supportsAnalogControl && (
-              <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 1.5 }}>
-                <TextField label="Analog Min" type="number" size="small" value={capabilityDraft.analogMin} onChange={(e) => setCapabilityDraft((p) => ({ ...p, analogMin: Number(e.target.value) }))} />
-                <TextField label="Analog Max" type="number" size="small" value={capabilityDraft.analogMax} onChange={(e) => setCapabilityDraft((p) => ({ ...p, analogMax: Number(e.target.value) }))} />
-                <TextField label="Analog Step" type="number" size="small" value={capabilityDraft.analogStep} onChange={(e) => setCapabilityDraft((p) => ({ ...p, analogStep: Number(e.target.value) }))} />
-                <TextField label="Control Unit" size="small" value={capabilityDraft.controlUnit} onChange={(e) => setCapabilityDraft((p) => ({ ...p, controlUnit: e.target.value }))} />
+            <Box sx={sectionHeaderSx}>
+              <Typography variant="h6" sx={{ lineHeight: 1.25 }}>Sensors (inputs)</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Button component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} variant="outlined" size="small">
+                  Manage sensors
+                </Button>
+                <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openSensorForm('add')}>
+                  Add sensor
+                </Button>
               </Stack>
-            )}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Button variant="contained" size="small" onClick={saveCapabilities} disabled={configSaving}>
-                {configSaving ? 'Saving...' : 'Save Capabilities'}
-              </Button>
-              {configMessage && (
-                <Typography variant="caption" color={configMessage.includes('Failed') ? 'error.main' : 'success.main'}>
-                  {configMessage}
-                </Typography>
-              )}
             </Box>
-            <Typography variant="caption" color="text.secondary">
-              Loaded configuration entries: {deviceConfigurations.length}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              One row per sensor. <strong>View</strong> opens a live chart with SignalR updates.
             </Typography>
+            {sensors.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No sensors yet.{' '}
+                <Link component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} underline="hover">
+                  Add sensors
+                </Link>
+              </Typography>
+            ) : (
+              <TableContainer>
+                <Table size="small" sx={tableAlignSx}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Sensor</TableCell>
+                      <TableCell>Type / unit</TableCell>
+                      <TableCell align="center" sx={{ width: 120 }}>Status</TableCell>
+                      <TableCell align="right" sx={{ minWidth: 220 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {sensors.map((s) => (
+                      <TableRow key={s.sensorId} hover>
+                        <TableCell>
+                          <Chip label="Sensor" size="small" variant="outlined" sx={{ mr: 1, verticalAlign: 'middle' }} />
+                          <Typography component="span" variant="body2" fontWeight={600}>{s.sensorName}</Typography>
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            ID {s.sensorId}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{s.sensorType}</Typography>
+                          {s.unit ? (
+                            <Typography variant="caption" color="text.secondary" display="block">{s.unit}</Typography>
+                          ) : null}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                            <Chip
+                              size="small"
+                              label={s.isActive ? 'Active' : 'Inactive'}
+                              color={s.isActive ? 'success' : 'default'}
+                              sx={statusChipSx}
+                            />
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center" flexWrap="wrap" useFlexGap>
+                            <IconButton size="small" aria-label="edit sensor" onClick={() => openSensorForm('edit', s)}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" aria-label="delete sensor" onClick={() => deleteSensorRow(s)}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              onClick={() => setSensorChartSensorId(s.sensorId)}
+                            >
+                              View
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Paper sx={panelSx}>
+            <Box sx={sectionHeaderSx}>
+              <Typography variant="h6" sx={{ lineHeight: 1.25 }}>Actuators (outputs)</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Button component={RouterLink} to={`/actuators?deviceId=${device.deviceId}`} variant="outlined" size="small">
+                  Manage actuators
+                </Button>
+                <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openActuatorDialog('add')}>
+                  Add actuator
+                </Button>
+              </Stack>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Link a <strong>feedback sensor</strong> here (setting only). To see live readings and charts, use <strong>View</strong> on that sensor in Sensors above (same chart opens below).{' '}
+              <strong>Control</strong> sends commands; detailed feedback still appears in Control while operating.
+            </Typography>
+            {actuators.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No actuators yet. Add one to target <strong>SetPower</strong> / <strong>SetValue</strong> at a specific output.
+              </Typography>
+            ) : (
+              <TableContainer>
+                <Table size="small" sx={tableAlignSx}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Actuator</TableCell>
+                      <TableCell>Kind / channel</TableCell>
+                      <TableCell sx={{ minWidth: 200, maxWidth: 280 }}>Feedback sensor</TableCell>
+                      <TableCell align="center" sx={{ width: 120 }}>Status</TableCell>
+                      <TableCell align="right" sx={{ minWidth: 200 }}>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {actuators.map((a) => (
+                      <TableRow key={a.actuatorId} hover>
+                        <TableCell>
+                          <Chip label="Actuator" size="small" color="primary" variant="outlined" sx={{ mr: 1, verticalAlign: 'middle' }} />
+                          <Typography component="span" variant="body2" fontWeight={600}>{a.name}</Typography>
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            ID {a.actuatorId}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2">{a.kind}</Typography>
+                          {a.channel ? (
+                            <Typography variant="caption" color="text.secondary" display="block">{a.channel}</Typography>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          <FormControl
+                            size="small"
+                            fullWidth
+                            disabled={feedbackLinkSavingId === a.actuatorId || sensors.length === 0}
+                            sx={{ maxWidth: 260 }}
+                          >
+                            <InputLabel id={`fb-act-${a.actuatorId}`}>Sensor</InputLabel>
+                            <Select
+                              labelId={`fb-act-${a.actuatorId}`}
+                              label="Sensor"
+                              value={a.feedbackSensorId ?? ''}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                const nextId = v === '' ? undefined : Number(v);
+                                void handleFeedbackSensorChange(a, nextId);
+                              }}
+                            >
+                              <MenuItem value="">
+                                <em>None</em>
+                              </MenuItem>
+                              {sensors.map((s) => (
+                                <MenuItem key={s.sensorId} value={s.sensorId}>
+                                  {s.sensorName} (ID {s.sensorId})
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          {sensors.length === 0 ? (
+                            <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                              Add sensors above first.
+                            </Typography>
+                          ) : a.feedbackSensorId != null ? (
+                            <Box sx={{ mt: 0.75 }}>
+                              <Typography variant="caption" color="text.secondary" display="block" sx={{ lineHeight: 1.35 }}>
+                                Monitor this input under <strong>Sensors</strong> → <strong>View</strong> on that row, or:
+                              </Typography>
+                              <Button
+                                size="small"
+                                variant="text"
+                                sx={{ p: 0, mt: 0.25, minWidth: 0, fontSize: '0.8125rem', textTransform: 'none' }}
+                                onClick={() => setSensorChartSensorId(a.feedbackSensorId!)}
+                              >
+                                Open live chart (same as sensor View)
+                              </Button>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                              Optional — then view status in Sensors above.
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }}>
+                            <Chip
+                              size="small"
+                              label={a.isActive ? 'Active' : 'Inactive'}
+                              color={a.isActive ? 'success' : 'default'}
+                              sx={statusChipSx}
+                            />
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center" flexWrap="wrap" useFlexGap>
+                            <IconButton
+                              size="small"
+                              aria-label="edit actuator"
+                              onClick={() => openActuatorDialog('edit', a)}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" aria-label="delete actuator" onClick={() => deleteActuator(a)}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() => {
+                                setActuatorControlTarget(a);
+                                void refreshFeedbackForActuators(actuators);
+                              }}
+                            >
+                              Control
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
           </Paper>
         </Grid>
 
@@ -354,10 +893,50 @@ const DeviceDetailPage: React.FC = () => {
           <Grid item xs={12}>
             <Paper sx={panelSx}>
               <Typography variant="h6" sx={{ mb: 1 }}>
-                Device Control
+                Command status
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Submit control commands for this device. Actual device state should be verified by telemetry or command acknowledgements.
+                Latest command for this device (including per-actuator commands). Refresh after MQTT acknowledgment if needed.
+              </Typography>
+              {commandError && <MuiAlert severity="error" sx={{ mb: 2 }}>{commandError}</MuiAlert>}
+              {commandSuccess && <MuiAlert severity="success" sx={{ mb: 2 }}>{commandSuccess}</MuiAlert>}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Typography variant="body2" color="text.secondary">Latest command:</Typography>
+                {latestCommand ? (
+                  <>
+                    <Chip size="small" label={`#${latestCommand.commandId}`} />
+                    <Chip size="small" label={latestCommand.commandType} />
+                    {latestCommand.actuatorId != null && (
+                      <Chip size="small" variant="outlined" label={`Actuator ${latestCommand.actuatorId}`} />
+                    )}
+                    <Chip
+                      size="small"
+                      color={latestCommand.status === 'Failed' ? 'error' : latestCommand.status === 'Acked' ? 'success' : 'info'}
+                      label={latestCommand.status}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(latestCommand.createdAt).toLocaleString()}
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="body2">No commands yet</Typography>
+                )}
+                <Button size="small" onClick={() => refreshLatestCommand(device.deviceId)} disabled={commandLoading}>
+                  Refresh status
+                </Button>
+              </Box>
+            </Paper>
+          </Grid>
+        )}
+
+        {useLegacyDeviceControl && (
+          <Grid item xs={12}>
+            <Paper sx={panelSx}>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Device Control (legacy)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Submit control commands without per-actuator targeting. Add actuators above to hide this section.
               </Typography>
 
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems={{ xs: 'stretch', md: 'center' }} sx={{ mb: 2 }}>
@@ -411,156 +990,275 @@ const DeviceDetailPage: React.FC = () => {
                   </>
                 )}
               </Stack>
-
-              {commandError && <MuiAlert severity="error" sx={{ mb: 2 }}>{commandError}</MuiAlert>}
-              {commandSuccess && <MuiAlert severity="success" sx={{ mb: 2 }}>{commandSuccess}</MuiAlert>}
-
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <Typography variant="body2" color="text.secondary">Latest command:</Typography>
-                {latestCommand ? (
-                  <>
-                    <Chip size="small" label={`#${latestCommand.commandId}`} />
-                    <Chip size="small" label={latestCommand.commandType} />
-                    <Chip
-                      size="small"
-                      color={latestCommand.status === 'Failed' ? 'error' : latestCommand.status === 'Acked' ? 'success' : 'info'}
-                      label={latestCommand.status}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(latestCommand.createdAt).toLocaleString()}
-                    </Typography>
-                  </>
-                ) : (
-                  <Typography variant="body2">No commands yet</Typography>
-                )}
-                <Button size="small" onClick={() => refreshLatestCommand(device.deviceId)} disabled={commandLoading}>
-                  Refresh status
-                </Button>
-              </Box>
             </Paper>
           </Grid>
         )}
-
-        <Grid item xs={12}>
-          <Paper sx={{ ...panelSx }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-              <Typography variant="h4" component="h1">
-                {device.deviceName}
-              </Typography>
-              <Chip
-                label={device.isActive ? 'Active' : 'Inactive'}
-                color={device.isActive ? 'success' : 'default'}
-                size="medium"
-              />
-            </Box>
-
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom variant="body2">
-                      Device ID
-                    </Typography>
-                    <Typography variant="h6">{device.deviceId}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom variant="body2">
-                      Device Type
-                    </Typography>
-                    <Typography variant="h6">{device.deviceType}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              {device.location && (
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom variant="body2">
-                        Location
-                      </Typography>
-                      <Typography variant="h6">{device.location}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
-
-              {device.facilityType && (
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom variant="body2">
-                        Facility Type
-                      </Typography>
-                      <Typography variant="h6">{device.facilityType}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
-
-              {device.edgeDeviceType && (
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom variant="body2">
-                        Edge Device Type
-                      </Typography>
-                      <Typography variant="h6">{device.edgeDeviceType}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
-
-              {device.edgeDeviceId && (
-                <Grid item xs={12} md={6}>
-                  <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                    <CardContent>
-                      <Typography color="text.secondary" gutterBottom variant="body2">
-                        Edge Device ID
-                      </Typography>
-                      <Typography variant="h6">{device.edgeDeviceId}</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              )}
-
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom variant="body2">
-                      Last Seen
-                    </Typography>
-                    <Typography variant="h6">
-                      {device.lastSeenAt
-                        ? new Date(device.lastSeenAt).toLocaleString()
-                        : 'Never'}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ boxShadow: 'none' }}>
-                  <CardContent>
-                    <Typography color="text.secondary" gutterBottom variant="body2">
-                      Created At
-                    </Typography>
-                    <Typography variant="h6">
-                      {new Date(device.createdAt).toLocaleString()}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-            </Grid>
-          </Paper>
-        </Grid>
       </Grid>
+
+      <Dialog
+        open={sensorChartSensorId != null}
+        onClose={() => setSensorChartSensorId(null)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          Live readings —{' '}
+          {sensorChartSensorId != null
+            ? sensors.find((x) => x.sensorId === sensorChartSensorId)?.sensorName ?? `Sensor ${sensorChartSensorId}`
+            : ''}
+        </DialogTitle>
+        <DialogContent dividers sx={{ pt: 2 }}>
+          {sensorChartSensorId != null && (
+            <DeviceTemperatureChart
+              key={sensorChartSensorId}
+              deviceId={device.deviceId}
+              deviceName={device.deviceName}
+              sensorId={sensorChartSensorId}
+              height={420}
+              showPaper={false}
+              windowMode="time"
+              timeWindowMinutes={5}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSensorChartSensorId(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={actuatorControlTarget != null}
+        onClose={() => setActuatorControlTarget(null)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Control — {actuatorControlTarget?.name ?? ''}
+        </DialogTitle>
+        <DialogContent dividers>
+          {actuatorControlTarget && (
+            <>
+              {!actuatorControlTarget.isActive && (
+                <MuiAlert severity="warning" sx={{ mb: 2 }}>
+                  This actuator is inactive. Turn it on from the Actuators tab or edit dialog before sending commands.
+                </MuiAlert>
+              )}
+              {commandError && <MuiAlert severity="error" sx={{ mb: 2 }} onClose={() => setCommandError(null)}>{commandError}</MuiAlert>}
+              {commandSuccess && <MuiAlert severity="success" sx={{ mb: 2 }} onClose={() => setCommandSuccess(null)}>{commandSuccess}</MuiAlert>}
+
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                {actuatorControlTarget.kind}
+                {actuatorControlTarget.channel ? ` • ${actuatorControlTarget.channel}` : ''}
+              </Typography>
+
+              {actuatorControlTarget.feedbackSensorId != null && (
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Feedback
+                  </Typography>
+                  <Typography variant="body2">
+                    {sensorLabel(actuatorControlTarget.feedbackSensorId)} —{' '}
+                    <strong>
+                      {feedbackBySensorId[actuatorControlTarget.feedbackSensorId] === undefined
+                        ? '—'
+                        : actuatorControlTarget.kind.toLowerCase() === 'discrete'
+                          ? (feedbackBySensorId[actuatorControlTarget.feedbackSensorId] ?? 0) >= 1
+                            ? 'ON'
+                            : 'OFF'
+                          : String(feedbackBySensorId[actuatorControlTarget.feedbackSensorId])}
+                      {actuatorControlTarget.kind.toLowerCase() === 'analog' && actuatorControlTarget.controlUnit
+                        ? ` ${actuatorControlTarget.controlUnit}`
+                        : ''}
+                    </strong>
+                  </Typography>
+                  <Button size="small" sx={{ mt: 1 }} onClick={() => refreshFeedbackForActuators(actuators)} disabled={commandLoading}>
+                    Refresh feedback
+                  </Button>
+                </Box>
+              )}
+
+              {actuatorControlTarget.kind.toLowerCase() === 'discrete' && (
+                <FormControlLabel
+                  sx={{ mt: 1, display: 'block' }}
+                  control={(
+                    <Switch
+                      checked={powerByActuatorId[actuatorControlTarget.actuatorId] ?? false}
+                      disabled={commandLoading || !actuatorControlTarget.isActive}
+                      onChange={(_, v) => {
+                        setPowerByActuatorId((p) => ({ ...p, [actuatorControlTarget.actuatorId]: v }));
+                        void submitActuatorPower(actuatorControlTarget, v);
+                      }}
+                    />
+                  )}
+                  label={powerByActuatorId[actuatorControlTarget.actuatorId] ? 'Target ON' : 'Target OFF'}
+                />
+              )}
+
+              {actuatorControlTarget.kind.toLowerCase() === 'analog' && (
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ xs: 'stretch', sm: 'center' }} sx={{ mt: 2 }}>
+                  <Box sx={{ flex: 1, minWidth: 200 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Value ({actuatorControlTarget.controlUnit || 'units'})
+                    </Typography>
+                    <Slider
+                      value={analogByActuatorId[actuatorControlTarget.actuatorId] ?? (actuatorControlTarget.analogMin ?? 0)}
+                      min={actuatorControlTarget.analogMin ?? 0}
+                      max={actuatorControlTarget.analogMax ?? 100}
+                      step={0.25}
+                      disabled={commandLoading || !actuatorControlTarget.isActive}
+                      onChange={(_, v) => setAnalogByActuatorId((p) => ({ ...p, [actuatorControlTarget.actuatorId]: v as number }))}
+                    />
+                  </Box>
+                  <TextField
+                    size="small"
+                    type="number"
+                    label="Value"
+                    value={analogByActuatorId[actuatorControlTarget.actuatorId] ?? ''}
+                    onChange={(e) => setAnalogByActuatorId((p) => ({
+                      ...p,
+                      [actuatorControlTarget.actuatorId]: Number(e.target.value),
+                    }))}
+                    InputProps={{ inputProps: { min: actuatorControlTarget.analogMin, max: actuatorControlTarget.analogMax, step: 0.25 } }}
+                    sx={{ width: 120 }}
+                    disabled={commandLoading || !actuatorControlTarget.isActive}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => submitActuatorValue(actuatorControlTarget)}
+                    disabled={commandLoading || !actuatorControlTarget.isActive}
+                  >
+                    Send SetValue
+                  </Button>
+                </Stack>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setActuatorControlTarget(null)}>Close</Button>
+          <Button
+            size="small"
+            onClick={() => refreshLatestCommand(device.deviceId)}
+            disabled={commandLoading}
+          >
+            Refresh command status
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={actuatorDialogOpen} onClose={() => setActuatorDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{actuatorEditingId == null ? 'Add actuator' : 'Edit actuator'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Name"
+              required
+              fullWidth
+              value={actuatorForm.name}
+              onChange={(e) => setActuatorForm((f) => ({ ...f, name: e.target.value }))}
+            />
+            <TextField
+              label="Description"
+              fullWidth
+              multiline
+              minRows={2}
+              value={actuatorForm.description ?? ''}
+              onChange={(e) => setActuatorForm((f) => ({ ...f, description: e.target.value }))}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="act-kind-label">Kind</InputLabel>
+              <Select
+                labelId="act-kind-label"
+                label="Kind"
+                value={actuatorForm.kind}
+                onChange={(e) => setActuatorForm((f) => ({ ...f, kind: String(e.target.value) }))}
+              >
+                <MenuItem value="Discrete">Discrete (SetPower / on-off)</MenuItem>
+                <MenuItem value="Analog">Analog (SetValue)</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Channel (optional, for firmware routing)"
+              fullWidth
+              value={actuatorForm.channel ?? ''}
+              onChange={(e) => setActuatorForm((f) => ({ ...f, channel: e.target.value }))}
+            />
+            {actuatorForm.kind === 'Analog' && (
+              <>
+                <TextField
+                  label="Analog min"
+                  type="number"
+                  fullWidth
+                  value={actuatorForm.analogMin ?? ''}
+                  onChange={(e) =>
+                    setActuatorForm((f) => ({
+                      ...f,
+                      analogMin: e.target.value === '' ? undefined : Number(e.target.value),
+                    }))
+                  }
+                />
+                <TextField
+                  label="Analog max"
+                  type="number"
+                  fullWidth
+                  value={actuatorForm.analogMax ?? ''}
+                  onChange={(e) =>
+                    setActuatorForm((f) => ({
+                      ...f,
+                      analogMax: e.target.value === '' ? undefined : Number(e.target.value),
+                    }))
+                  }
+                />
+                <TextField
+                  label="Control unit"
+                  fullWidth
+                  value={actuatorForm.controlUnit ?? ''}
+                  onChange={(e) => setActuatorForm((f) => ({ ...f, controlUnit: e.target.value }))}
+                />
+              </>
+            )}
+            <FormControl fullWidth>
+              <InputLabel id="act-fb-label">Feedback sensor</InputLabel>
+              <Select
+                labelId="act-fb-label"
+                label="Feedback sensor"
+                value={actuatorForm.feedbackSensorId ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setActuatorForm((f) => ({
+                    ...f,
+                    feedbackSensorId: v === '' ? undefined : Number(v),
+                  }));
+                }}
+              >
+                <MenuItem value="">None</MenuItem>
+                {sensors.map((s) => (
+                  <MenuItem key={s.sensorId} value={s.sensorId}>
+                    {s.sensorName} (#{s.sensorId})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setActuatorDialogOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={() => void saveActuatorDialog()} disabled={actuatorSaving}>
+            {actuatorSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <SensorForm
+        key={editingSensor ? `edit-${editingSensor.sensorId}` : 'create'}
+        open={sensorFormOpen}
+        onClose={closeSensorForm}
+        onSubmit={handleSubmitSensorForm}
+        initialData={editingSensor ? sensorToFormValues(editingSensor) : undefined}
+        title={editingSensor ? 'Edit sensor' : 'Add sensor'}
+        isEdit={Boolean(editingSensor)}
+      />
     </Box>
   );
 };

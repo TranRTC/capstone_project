@@ -43,6 +43,7 @@ namespace IoTMonitoringSystem.Core.Entities
 
         public ICollection<SensorReading> SensorReadings { get; set; } = new List<SensorReading>();
         public ICollection<AlertRule> AlertRules { get; set; } = new List<AlertRule>();
+        public ICollection<Actuator> ActuatorsUsingAsFeedback { get; set; } = new List<Actuator>();
     }
 }
 

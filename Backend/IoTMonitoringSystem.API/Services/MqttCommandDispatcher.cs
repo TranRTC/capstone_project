@@ -1,5 +1,7 @@
 using IoTMonitoringSystem.Core.Entities;
+using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Services;
+using Microsoft.EntityFrameworkCore;
 using MQTTnet;
 using System.Text;
 using System.Text.Json;
@@ -10,13 +12,16 @@ namespace IoTMonitoringSystem.API.Services
     {
         private readonly IConfiguration _configuration;
         private readonly ILogger<MqttCommandDispatcher> _logger;
+        private readonly ApplicationDbContext _context;
 
         public MqttCommandDispatcher(
             IConfiguration configuration,
-            ILogger<MqttCommandDispatcher> logger)
+            ILogger<MqttCommandDispatcher> logger,
+            ApplicationDbContext context)
         {
             _configuration = configuration;
             _logger = logger;
+            _context = context;
         }
 
         public async Task DispatchAsync(DeviceCommand command, CancellationToken cancellationToken = default)
@@ -35,7 +40,7 @@ namespace IoTMonitoringSystem.API.Services
             await mqttClient.ConnectAsync(options, cancellationToken);
 
             var topic = $"devices/{command.DeviceId}/commands";
-            var payload = BuildCommandPayload(command);
+            var payload = await BuildCommandPayloadAsync(command, cancellationToken);
 
             var message = new MqttApplicationMessageBuilder()
                 .WithTopic(topic)
@@ -49,16 +54,26 @@ namespace IoTMonitoringSystem.API.Services
             await mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
         }
 
-        private static byte[] BuildCommandPayload(DeviceCommand command)
+        private async Task<byte[]> BuildCommandPayloadAsync(DeviceCommand command, CancellationToken cancellationToken)
         {
             var payloadElement = JsonSerializer.Deserialize<JsonElement>(command.Payload);
+            string? channel = null;
+            if (command.ActuatorId.HasValue)
+            {
+                var actuator = await _context.Actuators.AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.ActuatorId == command.ActuatorId.Value, cancellationToken);
+                channel = actuator?.Channel;
+            }
+
             var commandEnvelope = new
             {
                 commandId = command.CommandId,
                 correlationId = command.CorrelationId,
                 commandType = command.CommandType,
                 payload = payloadElement,
-                createdAt = command.CreatedAt
+                createdAt = command.CreatedAt,
+                actuatorId = command.ActuatorId,
+                channel
             };
 
             return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(commandEnvelope));

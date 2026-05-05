@@ -107,15 +107,48 @@ export interface CreateSensorReading {
   quality?: string;
 }
 
+export interface Actuator {
+  actuatorId: number;
+  deviceId: number;
+  name: string;
+  description?: string;
+  /** Discrete | Analog */
+  kind: string;
+  channel?: string;
+  analogMin?: number;
+  analogMax?: number;
+  controlUnit?: string;
+  isActive: boolean;
+  feedbackSensorId?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateActuator {
+  name: string;
+  description?: string;
+  kind: string;
+  channel?: string;
+  analogMin?: number;
+  analogMax?: number;
+  controlUnit?: string;
+  feedbackSensorId?: number;
+}
+
+export type UpdateActuatorPayload = Partial<CreateActuator> & { isActive?: boolean };
+
 export interface CreateDeviceCommand {
   commandType: string;
   payload: string;
   correlationId?: string;
+  /** Target output row; omit for legacy device-level commands only. */
+  actuatorId?: number;
 }
 
 export interface DeviceCommand {
   commandId: number;
   deviceId: number;
+  actuatorId?: number;
   commandType: string;
   payload: string;
   status: string;

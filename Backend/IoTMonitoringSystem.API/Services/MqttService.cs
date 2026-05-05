@@ -1,5 +1,7 @@
 using IoTMonitoringSystem.Core.DTOs;
+using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -196,6 +198,26 @@ namespace IoTMonitoringSystem.API.Services
                     : null;
 
                 using var scope = _serviceProvider.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var existing = await db.DeviceCommands.AsNoTracking()
+                    .FirstOrDefaultAsync(c => c.CommandId == commandId);
+
+                if (existing == null)
+                {
+                    _logger.LogWarning("Command ACK references unknown commandId {CommandId}", commandId);
+                    return;
+                }
+
+                if (existing.DeviceId != deviceId)
+                {
+                    _logger.LogWarning(
+                        "Command ACK device mismatch for command {CommandId}: topic device {TopicDeviceId}, command device {CommandDeviceId}",
+                        commandId,
+                        deviceId,
+                        existing.DeviceId);
+                    return;
+                }
+
                 var commandService = scope.ServiceProvider.GetRequiredService<IDeviceCommandService>();
                 await commandService.UpdateCommandStatusAsync(commandId, status, errorMessage);
 

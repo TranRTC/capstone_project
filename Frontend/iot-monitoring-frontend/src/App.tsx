@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import DevicesPage from './pages/DevicesPage';
 import DeviceDetailPage from './pages/DeviceDetailPage';
 import SensorsPage from './pages/SensorsPage';
+import ActuatorsPage from './pages/ActuatorsPage';
 import AlertsPage from './pages/AlertsPage';
 import { appTheme } from './theme';
 
@@ -29,6 +30,7 @@ function App() {
               <Route path="/devices" element={<DevicesPage />} />
               <Route path="/devices/:id" element={<DeviceDetailPage />} />
               <Route path="/sensors" element={<SensorsPage />} />
+              <Route path="/actuators" element={<ActuatorsPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
             </Routes>
           </Container>

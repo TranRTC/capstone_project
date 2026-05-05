@@ -36,11 +36,25 @@ namespace IoTMonitoringSystem.Services
             if (!device.IsActive)
                 throw new InvalidOperationException($"Device with ID {deviceId} is inactive");
 
-            await ValidateCommandAsync(device, dto);
+            Actuator? actuator = null;
+            if (dto.ActuatorId.HasValue)
+            {
+                actuator = await _context.Actuators
+                    .FirstOrDefaultAsync(a => a.ActuatorId == dto.ActuatorId.Value && a.DeviceId == deviceId);
+
+                if (actuator == null)
+                    throw new KeyNotFoundException($"Actuator with ID {dto.ActuatorId.Value} not found for device {deviceId}");
+
+                if (!actuator.IsActive)
+                    throw new InvalidOperationException($"Actuator with ID {dto.ActuatorId.Value} is inactive");
+            }
+
+            await ValidateCommandAsync(device, dto, actuator);
 
             var command = new DeviceCommand
             {
                 DeviceId = deviceId,
+                ActuatorId = dto.ActuatorId,
                 CommandType = dto.CommandType.Trim(),
                 Payload = dto.Payload,
                 Status = "Pending",
@@ -85,6 +99,9 @@ namespace IoTMonitoringSystem.Services
 
             if (!string.IsNullOrWhiteSpace(query.Status))
                 dbQuery = dbQuery.Where(c => c.Status == query.Status);
+
+            if (query.ActuatorId.HasValue)
+                dbQuery = dbQuery.Where(c => c.ActuatorId == query.ActuatorId.Value);
 
             if (query.StartDate.HasValue)
                 dbQuery = dbQuery.Where(c => c.CreatedAt >= query.StartDate.Value);
@@ -142,7 +159,7 @@ namespace IoTMonitoringSystem.Services
             return MapToDto(updated);
         }
 
-        private async Task ValidateCommandAsync(Device device, CreateDeviceCommandDto dto)
+        private async Task ValidateCommandAsync(Device device, CreateDeviceCommandDto dto, Actuator? actuator)
         {
             if (string.IsNullOrWhiteSpace(dto.CommandType))
                 throw new ArgumentException("CommandType is required");
@@ -161,6 +178,47 @@ namespace IoTMonitoringSystem.Services
             }
 
             var commandType = dto.CommandType.Trim();
+
+            if (actuator != null)
+            {
+                if (commandType.Equals("SetPower", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(actuator.Kind, "Discrete", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("SetPower applies only to Discrete actuators");
+
+                    if (!payload.TryGetProperty("on", out var onProp) ||
+                        (onProp.ValueKind != JsonValueKind.True && onProp.ValueKind != JsonValueKind.False))
+                    {
+                        throw new ArgumentException("SetPower payload must include boolean property 'on'");
+                    }
+
+                    return;
+                }
+
+                if (commandType.Equals("SetValue", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.Equals(actuator.Kind, "Analog", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("SetValue applies only to Analog actuators");
+
+                    if (!payload.TryGetProperty("value", out var valueProp) || valueProp.ValueKind != JsonValueKind.Number)
+                        throw new ArgumentException("SetValue payload must include numeric property 'value'");
+
+                    var value = valueProp.GetDecimal();
+                    var min = actuator.AnalogMin ?? await GetDecimalConfigAsync(device.DeviceId, "analogMin");
+                    var max = actuator.AnalogMax ?? await GetDecimalConfigAsync(device.DeviceId, "analogMax");
+
+                    if (min.HasValue && value < min.Value)
+                        throw new ArgumentOutOfRangeException(nameof(dto.Payload), $"Value is below minimum ({min.Value})");
+
+                    if (max.HasValue && value > max.Value)
+                        throw new ArgumentOutOfRangeException(nameof(dto.Payload), $"Value is above maximum ({max.Value})");
+
+                    return;
+                }
+
+                throw new ArgumentException($"Unsupported command type '{commandType}'");
+            }
+
             var supportsPowerControl = await GetSupportsFlagAsync(device.DeviceId, "supportsPowerControl");
             var supportsAnalogControl = await GetSupportsFlagAsync(device.DeviceId, "supportsAnalogControl");
             var isActuatorType = IsActuatorType(device.DeviceType);
@@ -246,6 +304,7 @@ namespace IoTMonitoringSystem.Services
             {
                 CommandId = command.CommandId,
                 DeviceId = command.DeviceId,
+                ActuatorId = command.ActuatorId,
                 CommandType = command.CommandType,
                 Payload = command.Payload,
                 Status = command.Status,

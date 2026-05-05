@@ -14,12 +14,16 @@ namespace IoTMonitoringSystem.Core.DTOs
 
         [MaxLength(100)]
         public string? CorrelationId { get; set; }
+
+        /// <summary>Optional target actuator; null keeps legacy device-level validation.</summary>
+        public int? ActuatorId { get; set; }
     }
 
     public class DeviceCommandDto
     {
         public long CommandId { get; set; }
         public int DeviceId { get; set; }
+        public int? ActuatorId { get; set; }
         public string CommandType { get; set; } = string.Empty;
         public string Payload { get; set; } = "{}";
         public string Status { get; set; } = string.Empty;
@@ -41,5 +45,8 @@ namespace IoTMonitoringSystem.Core.DTOs
 
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 50;
+
+        /// <summary>Filter commands that targeted this actuator.</summary>
+        public int? ActuatorId { get; set; }
     }
 }

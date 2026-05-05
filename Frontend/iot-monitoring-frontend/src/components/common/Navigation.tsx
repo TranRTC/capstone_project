@@ -5,6 +5,7 @@ import {
   Dashboard as DashboardIcon,
   Devices as DevicesIcon,
   Sensors as SensorsIcon,
+  Tune as TuneIcon,
   Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 
@@ -15,6 +16,7 @@ const Navigation: React.FC = () => {
     { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
     { path: '/devices', label: 'Devices', icon: <DevicesIcon /> },
     { path: '/sensors', label: 'Sensors', icon: <SensorsIcon /> },
+    { path: '/actuators', label: 'Actuators', icon: <TuneIcon /> },
     { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon /> },
   ];
 

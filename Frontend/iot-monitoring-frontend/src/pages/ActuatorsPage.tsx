@@ -20,8 +20,8 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Add as AddIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
-import SensorForm, { SensorFormValues } from '../components/sensor/SensorForm';
-import { DeviceList, Sensor } from '../types';
+import ActuatorForm, { ActuatorFormValues } from '../components/actuator/ActuatorForm';
+import { Actuator, CreateActuator, DeviceList, Sensor } from '../types';
 
 const panelSx = {
   p: 2.5,
@@ -68,43 +68,40 @@ const cardActionGhostDangerSx = {
   },
 };
 
-function sensorToFormValues(s: Sensor): SensorFormValues {
+function toCreatePayload(v: ActuatorFormValues): CreateActuator {
   return {
-    sensorName: s.sensorName,
-    sensorType: s.sensorType,
-    unit: s.unit ?? '',
-    edgeDeviceId: s.edgeDeviceId ?? '',
-    minValue: s.minValue ?? undefined,
-    maxValue: s.maxValue ?? undefined,
-    isActive: s.isActive,
+    name: v.name.trim(),
+    description: v.description?.trim() || undefined,
+    kind: v.kind,
+    channel: v.channel?.trim() || undefined,
+    analogMin: v.analogMin,
+    analogMax: v.analogMax,
+    controlUnit: v.controlUnit?.trim() || undefined,
+    feedbackSensorId: v.feedbackSensorId,
   };
 }
 
-function toCreatePayload(v: SensorFormValues) {
-  return {
-    sensorName: v.sensorName.trim(),
-    sensorType: v.sensorType.trim(),
-    unit: v.unit?.trim() || undefined,
-    edgeDeviceId: v.edgeDeviceId?.trim() || undefined,
-    minValue: v.minValue,
-    maxValue: v.maxValue,
-  };
+function feedbackLabel(actuator: Actuator, sensors: Sensor[]): string {
+  if (!actuator.feedbackSensorId) return 'None';
+  const s = sensors.find((x) => x.sensorId === actuator.feedbackSensorId);
+  return s ? `${s.sensorName} (${s.sensorId})` : `Sensor ID ${actuator.feedbackSensorId}`;
 }
 
-const SensorsPage: React.FC = () => {
+const ActuatorsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [devices, setDevices] = useState<DeviceList[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | ''>('');
+  const [actuators, setActuators] = useState<Actuator[]>([]);
+  const [actuatorsLoading, setActuatorsLoading] = useState(false);
+  const [actuatorsError, setActuatorsError] = useState<string | null>(null);
   const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [sensorsLoading, setSensorsLoading] = useState(false);
-  const [sensorsError, setSensorsError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [editingSensor, setEditingSensor] = useState<Sensor | null>(null);
+  const [editingActuator, setEditingActuator] = useState<Actuator | null>(null);
 
   useEffect(() => {
-    loadDevices();
+    void loadDevices();
   }, []);
 
   useEffect(() => {
@@ -118,11 +115,12 @@ const SensorsPage: React.FC = () => {
 
   useEffect(() => {
     if (selectedDeviceId === '') {
+      setActuators([]);
       setSensors([]);
-      setSensorsError(null);
+      setActuatorsError(null);
       return;
     }
-    loadSensors(selectedDeviceId);
+    void loadActuatorsAndSensors(selectedDeviceId);
   }, [selectedDeviceId]);
 
   const loadDevices = async () => {
@@ -151,82 +149,87 @@ const SensorsPage: React.FC = () => {
     }
   };
 
-  const loadSensors = async (deviceId: number) => {
+  const loadActuatorsAndSensors = async (deviceId: number) => {
     try {
-      setSensorsLoading(true);
-      setSensorsError(null);
-      const data = await apiService.getSensorsByDevice(deviceId);
-      setSensors(data);
+      setActuatorsLoading(true);
+      setActuatorsError(null);
+      const [actuatorList, sensorList] = await Promise.all([
+        apiService.getActuatorsByDevice(deviceId),
+        apiService.getSensorsByDevice(deviceId),
+      ]);
+      setActuators(actuatorList);
+      setSensors(sensorList);
     } catch (err: any) {
-      console.error('Error loading sensors:', err);
+      console.error('Error loading actuators/sensors:', err);
+      setActuators([]);
       setSensors([]);
-      setSensorsError(err?.message || 'Failed to load sensors');
+      setActuatorsError(err?.message || 'Failed to load actuators');
     } finally {
-      setSensorsLoading(false);
+      setActuatorsLoading(false);
     }
   };
 
   const handleCloseForm = () => {
     setFormOpen(false);
-    setEditingSensor(null);
+    setEditingActuator(null);
   };
 
-  const handleSubmitSensor = async (values: SensorFormValues) => {
+  const handleSubmitActuator = async (values: ActuatorFormValues) => {
     const deviceId = selectedDeviceId;
     if (deviceId === '') {
       throw new Error('Select a device first.');
     }
 
-    if (editingSensor) {
-      await apiService.updateSensor(editingSensor.sensorId, {
+    if (editingActuator) {
+      await apiService.updateActuator(deviceId, editingActuator.actuatorId, {
         ...toCreatePayload(values),
         isActive: values.isActive,
       });
     } else {
-      await apiService.createSensor(deviceId, toCreatePayload(values));
+      await apiService.createActuator(deviceId, toCreatePayload(values));
     }
-    await loadSensors(deviceId);
+    await loadActuatorsAndSensors(deviceId);
   };
 
-  const handleEditSensor = (sensor: Sensor) => {
-    setEditingSensor(sensor);
+  const handleEditActuator = (actuator: Actuator) => {
+    setEditingActuator(actuator);
     setFormOpen(true);
   };
 
-  const handleDeleteSensor = async (sensorId: number) => {
-    if (!window.confirm('Delete this sensor? This cannot be undone.')) return;
+  const handleDeleteActuator = async (actuatorId: number) => {
+    if (!window.confirm('Delete this actuator? This cannot be undone.')) return;
     try {
-      await apiService.deleteSensor(sensorId);
-      if (selectedDeviceId !== '') {
-        await loadSensors(selectedDeviceId);
-      }
+      if (selectedDeviceId === '') return;
+      await apiService.deleteActuator(selectedDeviceId, actuatorId);
+      await loadActuatorsAndSensors(selectedDeviceId);
     } catch (err) {
-      console.error('Error deleting sensor:', err);
-      alert('Failed to delete sensor');
+      console.error('Error deleting actuator:', err);
+      alert('Failed to delete actuator');
     }
   };
 
   const openCreateForm = () => {
-    setEditingSensor(null);
+    setEditingActuator(null);
     setFormOpen(true);
   };
 
-  const canManageSensors = selectedDeviceId !== '' && !devicesLoading && devices.length > 0;
+  const canManageActuators = selectedDeviceId !== '' && !devicesLoading && devices.length > 0;
 
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 2 }}>
-        Sensors
+        Actuators
       </Typography>
 
-      <SensorForm
-        key={editingSensor ? `edit-${editingSensor.sensorId}` : 'create'}
+      <ActuatorForm
+        key={editingActuator ? `edit-${editingActuator.actuatorId}` : 'create'}
         open={formOpen}
         onClose={handleCloseForm}
-        onSubmit={handleSubmitSensor}
-        initialData={editingSensor ? sensorToFormValues(editingSensor) : undefined}
-        title={editingSensor ? 'Edit Sensor' : 'Add Sensor'}
-        isEdit={Boolean(editingSensor)}
+        onSubmit={handleSubmitActuator}
+        initialData={editingActuator ?? undefined}
+        sensors={sensors}
+        title={editingActuator ? 'Edit Actuator' : 'Add Actuator'}
+        isEdit={Boolean(editingActuator)}
       />
 
       {devicesError && (
@@ -234,7 +237,7 @@ const SensorsPage: React.FC = () => {
           severity="error"
           sx={{ mb: 3 }}
           action={(
-            <Button color="inherit" size="small" onClick={loadDevices}>
+            <Button color="inherit" size="small" onClick={() => void loadDevices()}>
               Retry
             </Button>
           )}
@@ -245,15 +248,15 @@ const SensorsPage: React.FC = () => {
 
       <Paper sx={{ ...panelSx, mb: 3 }}>
         <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Select a device to view and manage its sensors.
+          Select a device to view and manage its actuators.
         </Typography>
         {devicesLoading ? (
           <Skeleton variant="rounded" width="100%" height={56} sx={{ maxWidth: 400 }} />
         ) : (
           <FormControl fullWidth sx={{ maxWidth: 400 }} disabled={devices.length === 0}>
-            <InputLabel id="sensors-device-select-label">Device</InputLabel>
+            <InputLabel id="actuators-device-select-label">Device</InputLabel>
             <Select
-              labelId="sensors-device-select-label"
+              labelId="actuators-device-select-label"
               value={selectedDeviceId}
               label="Device"
               onChange={(e) => setSelectedDeviceId(e.target.value as number)}
@@ -273,8 +276,8 @@ const SensorsPage: React.FC = () => {
               <FormHelperText>
                 {selectedDeviceId !== '' && (
                   <>
-                    Managing sensors for device ID {selectedDeviceId}.{' '}
-                    <Link to={`/devices/${selectedDeviceId}`}>Open device</Link>
+                    Managing actuators for device ID {selectedDeviceId}.{' '}
+                    <Link to={`/devices/${selectedDeviceId}`}>Open device</Link> to run commands and controls.
                   </>
                 )}
               </FormHelperText>
@@ -287,14 +290,14 @@ const SensorsPage: React.FC = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={openCreateForm}
-            disabled={!canManageSensors || sensorsLoading}
+            disabled={!canManageActuators || actuatorsLoading}
           >
-            Add Sensor
+            Add Actuator
           </Button>
         </Box>
       </Paper>
 
-      {sensorsError && selectedDeviceId !== '' && (
+      {actuatorsError && selectedDeviceId !== '' && (
         <MuiAlert
           severity="error"
           sx={{ mb: 3 }}
@@ -302,17 +305,17 @@ const SensorsPage: React.FC = () => {
             <Button
               color="inherit"
               size="small"
-              onClick={() => loadSensors(selectedDeviceId as number)}
+              onClick={() => void loadActuatorsAndSensors(selectedDeviceId as number)}
             >
               Retry
             </Button>
           )}
         >
-          {sensorsError}
+          {actuatorsError}
         </MuiAlert>
       )}
 
-      {selectedDeviceId !== '' && sensorsLoading ? (
+      {selectedDeviceId !== '' && actuatorsLoading ? (
         <Paper sx={{ ...panelSx }}>
           <Grid container spacing={2}>
             {[1, 2, 3].map((k) => (
@@ -322,17 +325,17 @@ const SensorsPage: React.FC = () => {
             ))}
           </Grid>
         </Paper>
-      ) : selectedDeviceId !== '' && sensors.length === 0 && !sensorsError ? (
+      ) : selectedDeviceId !== '' && actuators.length === 0 && !actuatorsError ? (
         <Paper sx={{ ...panelSx }}>
-          <Typography color="text.secondary">No sensors for this device yet.</Typography>
+          <Typography color="text.secondary">No actuators for this device yet.</Typography>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-            Use Add Sensor to register one.
+            Use Add Actuator to register one.
           </Typography>
         </Paper>
-      ) : selectedDeviceId !== '' && sensors.length > 0 ? (
+      ) : selectedDeviceId !== '' && actuators.length > 0 ? (
         <Grid container spacing={3}>
-          {sensors.map((sensor) => (
-            <Grid item xs={12} sm={6} md={4} key={sensor.sensorId}>
+          {actuators.map((actuator) => (
+            <Grid item xs={12} sm={6} md={4} key={actuator.actuatorId}>
               <Card
                 variant="outlined"
                 sx={{
@@ -346,38 +349,38 @@ const SensorsPage: React.FC = () => {
                 <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
                     <Typography variant="h6" component="h2" sx={{ fontSize: '1.05rem' }}>
-                      {sensor.sensorName}
+                      {actuator.name}
                     </Typography>
                     <Chip
-                      label={sensor.isActive ? 'Active' : 'Inactive'}
-                      color={sensor.isActive ? 'success' : 'default'}
+                      label={actuator.isActive ? 'Active' : 'Inactive'}
+                      color={actuator.isActive ? 'success' : 'default'}
                       size="small"
                     />
                   </Box>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Type: {sensor.sensorType}
+                    Kind: {actuator.kind}
                   </Typography>
-                  {sensor.unit ? (
+                  {actuator.channel ? (
                     <Typography variant="body2" color="text.secondary">
-                      Unit: {sensor.unit}
+                      Channel: {actuator.channel}
                     </Typography>
                   ) : null}
-                  {sensor.minValue != null && sensor.maxValue != null ? (
+                  {actuator.kind === 'Analog' &&
+                  actuator.analogMin != null &&
+                  actuator.analogMax != null ? (
                     <Typography variant="body2" color="text.secondary">
-                      Range: {sensor.minValue} – {sensor.maxValue}
-                      {sensor.unit ? ` ${sensor.unit}` : ''}
+                      Range: {actuator.analogMin} – {actuator.analogMax}
+                      {actuator.controlUnit ? ` ${actuator.controlUnit}` : ''}
                     </Typography>
-                  ) : null}
-                  {sensor.edgeDeviceId ? (
+                    ) : null}
+                  <Typography variant="body2" color="text.secondary">
+                    Feedback: {feedbackLabel(actuator, sensors)}
+                  </Typography>
+                  {actuator.description ? (
                     <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-                      Edge ID: {sensor.edgeDeviceId}
+                      {actuator.description}
                     </Typography>
                   ) : null}
-                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-                    Live chart: open{' '}
-                    <Link to={`/devices/${selectedDeviceId}`}>device detail</Link>
-                    {' '}→ View on this sensor.
-                  </Typography>
                   <Box
                     sx={{
                       mt: 'auto',
@@ -391,7 +394,7 @@ const SensorsPage: React.FC = () => {
                       size="small"
                       variant="outlined"
                       color="success"
-                      onClick={() => handleEditSensor(sensor)}
+                      onClick={() => handleEditActuator(actuator)}
                       sx={cardActionGhostSageSx}
                     >
                       Edit
@@ -400,7 +403,7 @@ const SensorsPage: React.FC = () => {
                       size="small"
                       variant="outlined"
                       color="error"
-                      onClick={() => handleDeleteSensor(sensor.sensorId)}
+                      onClick={() => handleDeleteActuator(actuator.actuatorId)}
                       sx={cardActionGhostDangerSx}
                     >
                       Delete
@@ -416,4 +419,4 @@ const SensorsPage: React.FC = () => {
   );
 };
 
-export default SensorsPage;
+export default ActuatorsPage;

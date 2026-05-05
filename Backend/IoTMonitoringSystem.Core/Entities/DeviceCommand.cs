@@ -11,6 +11,9 @@ namespace IoTMonitoringSystem.Core.Entities
         [Required]
         public int DeviceId { get; set; }
 
+        /// <summary>Optional target output; null uses legacy device-level validation only.</summary>
+        public int? ActuatorId { get; set; }
+
         [Required]
         [MaxLength(50)]
         public string CommandType { get; set; } = string.Empty;
@@ -40,5 +43,8 @@ namespace IoTMonitoringSystem.Core.Entities
 
         [ForeignKey("DeviceId")]
         public Device Device { get; set; } = null!;
+
+        [ForeignKey("ActuatorId")]
+        public Actuator? Actuator { get; set; }
     }
 }

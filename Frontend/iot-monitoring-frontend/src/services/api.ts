@@ -12,6 +12,9 @@ import {
   CreateDeviceCommand,
   DeviceConfiguration,
   DeviceConfigurationInput,
+  Actuator,
+  CreateActuator,
+  UpdateActuatorPayload,
   Alert,
   AlertRule,
   CreateAlertRule,
@@ -183,6 +186,7 @@ class ApiService {
       endDate?: string;
       pageNumber?: number;
       pageSize?: number;
+      actuatorId?: number;
     }
   ): Promise<PagedResult<DeviceCommand>> {
     const response = await this.api.get<ApiResponse<PagedResult<DeviceCommand>>>(
@@ -195,6 +199,44 @@ class ApiService {
     }
 
     return response.data.data;
+  }
+
+  // Actuators (outputs per device)
+  async getActuatorsByDevice(deviceId: number): Promise<Actuator[]> {
+    const response = await this.api.get<ApiResponse<Actuator[]>>(
+      `/actuators/devices/${deviceId}/actuators`
+    );
+    return response.data.data || [];
+  }
+
+  async createActuator(deviceId: number, body: CreateActuator): Promise<Actuator> {
+    const response = await this.api.post<ApiResponse<Actuator>>(
+      `/actuators/devices/${deviceId}/actuators`,
+      body
+    );
+    if (!response.data.data) {
+      throw new Error(response.data.message || 'Failed to create actuator');
+    }
+    return response.data.data;
+  }
+
+  async updateActuator(
+    deviceId: number,
+    actuatorId: number,
+    body: UpdateActuatorPayload
+  ): Promise<Actuator> {
+    const response = await this.api.put<ApiResponse<Actuator>>(
+      `/actuators/devices/${deviceId}/actuators/${actuatorId}`,
+      body
+    );
+    if (!response.data.data) {
+      throw new Error(response.data.message || 'Failed to update actuator');
+    }
+    return response.data.data;
+  }
+
+  async deleteActuator(deviceId: number, actuatorId: number): Promise<void> {
+    await this.api.delete(`/actuators/devices/${deviceId}/actuators/${actuatorId}`);
   }
 
   // Device Configuration endpoints

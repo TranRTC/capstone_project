@@ -19,6 +19,7 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<Alert> Alerts { get; set; }
         public DbSet<DeviceConfiguration> DeviceConfigurations { get; set; }
         public DbSet<DeviceCommand> DeviceCommands { get; set; }
+        public DbSet<Actuator> Actuators { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -97,6 +98,26 @@ namespace IoTMonitoringSystem.Infrastructure.Data
                 .HasForeignKey(dc => dc.DeviceId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            modelBuilder.Entity<Actuator>()
+                .HasOne(a => a.Device)
+                .WithMany(d => d.Actuators)
+                .HasForeignKey(a => a.DeviceId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // NoAction: SQL Server rejects SET NULL here when Device cascade-deletes Sensors and Actuators (multiple cascade paths).
+            modelBuilder.Entity<Actuator>()
+                .HasOne(a => a.FeedbackSensor)
+                .WithMany(s => s.ActuatorsUsingAsFeedback)
+                .HasForeignKey(a => a.FeedbackSensorId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            // NoAction: avoids SQL Server "multiple cascade paths" with DeviceCommands→Devices CASCADE and Actuators→Devices CASCADE.
+            modelBuilder.Entity<DeviceCommand>()
+                .HasOne(dc => dc.Actuator)
+                .WithMany(a => a.DeviceCommands)
+                .HasForeignKey(dc => dc.ActuatorId)
+                .OnDelete(DeleteBehavior.NoAction);
+
             // Indexes
             modelBuilder.Entity<SensorReading>()
                 .HasIndex(sr => new { sr.Timestamp, sr.DeviceId });
@@ -112,6 +133,12 @@ namespace IoTMonitoringSystem.Infrastructure.Data
 
             modelBuilder.Entity<DeviceCommand>()
                 .HasIndex(dc => new { dc.DeviceId, dc.Status });
+
+            modelBuilder.Entity<DeviceCommand>()
+                .HasIndex(dc => new { dc.DeviceId, dc.ActuatorId });
+
+            modelBuilder.Entity<Actuator>()
+                .HasIndex(a => new { a.DeviceId, a.Name });
 
             modelBuilder.Entity<Device>()
                 .HasIndex(d => d.EdgeDeviceId)
