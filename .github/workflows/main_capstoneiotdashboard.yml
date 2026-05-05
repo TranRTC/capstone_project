@@ -26,14 +26,16 @@ jobs:
         with:
           dotnet-version: '8.x'
 
-      - name: Restore
-        run: dotnet restore "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" -r win-x86
-
-      - name: Build with dotnet
-        run: dotnet build "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" --configuration Release --no-restore -r win-x86
-
-      - name: dotnet publish
-        run: dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj" -c Release -r win-x86 --self-contained true -o "${{env.DOTNET_ROOT}}/myapp" --no-build
+      # One publish step: build + publish must be self-contained together.
+      # Using `build` then `publish --no-build` reuses a framework-dependent build and omits the runtime (502.5 / "No frameworks were found").
+      - name: dotnet publish (self-contained win-x86)
+        run: >
+          dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj"
+          -c Release
+          -r win-x86
+          --self-contained true
+          -p:PublishReadyToRun=false
+          -o "${{ env.DOTNET_ROOT }}/myapp"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
