@@ -102,7 +102,9 @@ var app = builder.Build();
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupConfig");
 var mqttHost = app.Configuration.GetValue<string>("Mqtt:Host", "localhost");
 var mqttPort = app.Configuration.GetValue<int>("Mqtt:Port", 1883);
-var mqttEnableTls = app.Configuration.GetValue<bool>("Mqtt:EnableTls", false);
+var mqttEnableTlsRaw = app.Configuration.GetValue<string>("Mqtt:EnableTls");
+var mqttEnableTls = !string.IsNullOrWhiteSpace(mqttEnableTlsRaw) &&
+    bool.TryParse(mqttEnableTlsRaw, out var parsedTls) && parsedTls;
 var mqttUsername = app.Configuration.GetValue<string>("Mqtt:Username");
 var corsOrigins = app.Configuration
     .GetSection("Cors:AllowedOrigins")
