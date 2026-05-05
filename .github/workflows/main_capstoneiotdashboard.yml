@@ -26,13 +26,12 @@ jobs:
         with:
           dotnet-version: '8.x'
 
-      # Framework-dependent + win-x86: use the .NET 8 runtime already on the App Service worker (set Stack to .NET 8 in Azure).
-      # Avoids fragile self-contained + ANCM out-of-process startup (502.5) on Free tier.
-      - name: dotnet publish (framework-dependent win-x86)
+      # Portable framework-dependent deployment: relies on the .NET 8 runtime installed on the App Service.
+      # OutOfProcess hosting: ANCM proxies to Kestrel, avoiding IIS worker bitness constraints.
+      - name: dotnet publish (portable framework-dependent, out-of-process)
         run: >
           dotnet publish "Backend/IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj"
           -c Release
-          -r win-x86
           --self-contained false
           -p:UseAppHost=false
           -o "${{ env.DOTNET_ROOT }}/myapp"

@@ -4,8 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- In-process on Azure IIS matches the Web App .NET 8 stack (x86 on Free F1). -->
-    <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    <!-- OutOfProcess: ANCM proxies to Kestrel; avoids bitness mismatch on Azure Free tier. -->
+    <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
   </PropertyGroup>
 
   <ItemGroup>
