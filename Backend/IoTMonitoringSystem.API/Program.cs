@@ -13,11 +13,6 @@ var builder = WebApplication.CreateBuilder(args);
 ApplyMqttBrokerAliases(builder.Configuration);
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(connectionString))
-{
-    throw new InvalidOperationException(
-        "Database connection string is missing. Set ConnectionStrings__DefaultConnection in Azure App Service (Environment variables / Configuration).");
-}
 
 // Add services to the container
 builder.Services.AddControllers()
@@ -30,9 +25,13 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Database
+// Database - use fallback so the app can start even if connection string is missing (health endpoint will still work).
+var effectiveConnectionString = string.IsNullOrWhiteSpace(connectionString)
+    ? "Server=(invalid);Database=missing;Connection Timeout=1;"
+    : connectionString;
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(effectiveConnectionString));
 
 // Repositories
 builder.Services.AddScoped<IDeviceRepository, DeviceRepository>();
@@ -111,6 +110,17 @@ var corsOrigins = app.Configuration
     .Where(origin => !string.IsNullOrWhiteSpace(origin))
     .ToArray()
     ?? Array.Empty<string>();
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    startupLogger.LogError(
+        "ConnectionStrings__DefaultConnection is missing or empty. " +
+        "Data API endpoints will fail. Set this value in Azure App Service Environment variables (use double underscores: ConnectionStrings__DefaultConnection).");
+}
+else
+{
+    startupLogger.LogInformation("Database connection string loaded (length={Length}).", connectionString.Length);
+}
 
 startupLogger.LogInformation(
     "Startup configuration: MQTT {Host}:{Port} (TLS={TlsEnabled}, UsernameConfigured={HasUsername}), CORS origins count {OriginCount}.",
