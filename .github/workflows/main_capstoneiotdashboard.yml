@@ -9,7 +9,7 @@ on:
       - main
     paths:
       - 'Backend/**'
-      - '.github/workflows/main_CapstoneIoTDashboard.yml'
+      - '.github/workflows/main_capstoneiotdashboard.yml'
   workflow_dispatch:
 
 jobs:
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          path: ${{ env.DOTNET_ROOT }}/myapp
 
   deploy:
     runs-on: windows-latest
