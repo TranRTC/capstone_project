@@ -184,8 +184,6 @@ const DeviceDetailPage: React.FC = () => {
     };
   };
 
-  // loadDevice is intentionally excluded to keep navigation-driven loading simple for this page.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!id) {
       setDevice(null);
@@ -201,6 +199,7 @@ const DeviceDetailPage: React.FC = () => {
       return;
     }
     loadDevice(deviceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const refreshFeedbackForActuators = async (list: Actuator[]) => {

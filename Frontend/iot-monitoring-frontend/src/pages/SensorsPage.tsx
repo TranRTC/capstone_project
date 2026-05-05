@@ -105,6 +105,7 @@ const SensorsPage: React.FC = () => {
 
   useEffect(() => {
     loadDevices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

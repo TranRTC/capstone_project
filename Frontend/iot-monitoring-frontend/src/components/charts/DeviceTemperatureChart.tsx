@@ -63,7 +63,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   const [customWindow, setCustomWindow] = useState<{ startDate: string; endDate: string } | null>(null);
   
   // Zoom state - allow dynamic zoom control
-  const [windowMode, setWindowMode] = useState<'time' | 'points'>(initialWindowMode);
+  const [windowMode] = useState<'time' | 'points'>(initialWindowMode);
   const [timeWindowMinutes, setTimeWindowMinutes] = useState(initialTimeWindowMinutes);
   
   // Preset zoom levels (in minutes)

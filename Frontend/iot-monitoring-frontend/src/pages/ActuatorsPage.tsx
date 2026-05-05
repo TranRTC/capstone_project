@@ -102,6 +102,7 @@ const ActuatorsPage: React.FC = () => {
 
   useEffect(() => {
     void loadDevices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

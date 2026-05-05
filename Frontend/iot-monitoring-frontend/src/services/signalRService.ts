@@ -1,5 +1,5 @@
 import * as signalR from '@microsoft/signalr';
-import { SensorReading, Alert, Device } from '../types';
+import { SensorReading, Alert } from '../types';
 import { runtimeConfig } from '../config/runtimeConfig';
 
 class SignalRService {
