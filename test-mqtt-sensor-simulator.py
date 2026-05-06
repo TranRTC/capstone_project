@@ -2,6 +2,7 @@
 """
 MQTT Temperature Sensor Simulator
 Targets existing Temperature Sensor 1 by default.
+Supports TLS and username/password for cloud brokers like HiveMQ.
 """
 
 import paho.mqtt.client as mqtt
@@ -9,12 +10,16 @@ import json
 import time
 import random
 import sys
+import ssl
 import argparse
 from datetime import datetime
 
-# MQTT Broker Configuration
-MQTT_BROKER_HOST = "localhost"
-MQTT_BROKER_PORT = 1883
+# MQTT Broker Configuration (overridable via CLI args)
+MQTT_BROKER_HOST = "d3221e515d824a45849fcffe802de489.s1.eu.hivemq.cloud"
+MQTT_BROKER_PORT = 8883
+MQTT_USE_TLS = True
+MQTT_USERNAME = "iotuser"
+MQTT_PASSWORD = "IoTCapstone2026!"
 
 # Existing default records in this project
 DEFAULT_DEVICE_ID = 1
@@ -25,19 +30,25 @@ def create_sensor_client(sensor_id, device_id):
     """Create and configure MQTT client for a sensor"""
     client_id = f"sensor_{device_id}_{sensor_id}"
     client = mqtt.Client(client_id=client_id)
-    
+
+    if MQTT_USERNAME and MQTT_PASSWORD:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+
+    if MQTT_USE_TLS:
+        client.tls_set(cert_reqs=ssl.CERT_REQUIRED, tls_version=ssl.PROTOCOL_TLS)
+
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             print(f"[OK] Sensor {sensor_id} (Device {device_id}) connected to MQTT broker")
         else:
             print(f"[ERR] Sensor {sensor_id} failed to connect. Return code: {rc}")
-    
+
     def on_publish(client, userdata, mid):
         print(f"  [ACK] Message published by sensor {sensor_id} (mid: {mid})")
-    
+
     client.on_connect = on_connect
     client.on_publish = on_publish
-    
+
     return client
 
 def send_sensor_reading(client, device_id, sensor_id, value, topic_format="devices"):
@@ -141,6 +152,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="MQTT Temperature Sensor Simulator (defaults to Temperature Sensor 1)"
     )
+    parser.add_argument("--host", type=str, default=MQTT_BROKER_HOST, help="MQTT broker host")
+    parser.add_argument("--port", type=int, default=MQTT_BROKER_PORT, help="MQTT broker port")
+    parser.add_argument("--no-tls", action="store_true", help="Disable TLS (for local broker)")
+    parser.add_argument("--username", type=str, default=MQTT_USERNAME, help="MQTT username")
+    parser.add_argument("--password", type=str, default=MQTT_PASSWORD, help="MQTT password")
     parser.add_argument(
         "--device-id",
         type=int,
@@ -162,15 +178,20 @@ if __name__ == "__main__":
         default="devices",
         help="Topic format: 'devices' or 'sensor' (use 'devices' for backend ingestion)"
     )
-    
+
     args = parser.parse_args()
-    
+
+    # Apply broker settings globally
+    MQTT_BROKER_HOST = args.host
+    MQTT_BROKER_PORT = args.port
+    MQTT_USE_TLS = not args.no_tls
+    MQTT_USERNAME = args.username
+    MQTT_PASSWORD = args.password
+
     if args.value is not None:
-        # Send single reading
         print("Sending single sensor reading...")
         send_single_reading(args.device_id, args.sensor_id, args.value, args.topic_format)
     else:
-        # Simulate continuous readings
         simulate_sensor(args.device_id, args.sensor_id, args.interval, args.count, args.topic_format)
 
 
