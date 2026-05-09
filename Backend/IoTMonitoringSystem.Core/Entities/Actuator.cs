@@ -44,6 +44,13 @@ namespace IoTMonitoringSystem.Core.Entities
         /// <summary>Optional sensor whose readings reflect this actuator's physical state.</summary>
         public int? FeedbackSensorId { get; set; }
 
+        /// <summary>Last confirmed state, e.g. "on", "off", or the last analog value as string.</summary>
+        [MaxLength(100)]
+        public string? LastKnownState { get; set; }
+
+        /// <summary>When LastKnownState was last updated (set on command ACK).</summary>
+        public DateTime? LastStateAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

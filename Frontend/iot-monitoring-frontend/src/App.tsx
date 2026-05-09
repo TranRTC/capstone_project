@@ -11,6 +11,7 @@ import SensorsPage from './pages/SensorsPage';
 import ActuatorsPage from './pages/ActuatorsPage';
 import AlertsPage from './pages/AlertsPage';
 import AlertRulesPage from './pages/AlertRulesPage';
+import CommandHistoryPage from './pages/CommandHistoryPage';
 import { appTheme } from './theme';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
               <Route path="/actuators" element={<ActuatorsPage />} />
               <Route path="/alert-rules" element={<AlertRulesPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/command-history" element={<CommandHistoryPage />} />
             </Routes>
           </Container>
         </Box>

@@ -62,7 +62,9 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<IMqttIngestMetrics, MqttIngestMetrics>();
 builder.Services.AddSingleton<MqttService>();
 builder.Services.AddSingleton<IMqttRuntimeState>(sp => sp.GetRequiredService<MqttService>());
+builder.Services.AddSingleton<IMqttPublisher>(sp => sp.GetRequiredService<MqttService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttService>());
+builder.Services.AddHostedService<CommandTimeoutService>();
 
 // CORS - Must be configured before SignalR
 builder.Services.AddCors(options =>

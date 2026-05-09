@@ -8,6 +8,7 @@ import {
   Tune as TuneIcon,
   Notifications as NotificationsIcon,
   Rule as RuleIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 
 const Navigation: React.FC = () => {
@@ -20,6 +21,7 @@ const Navigation: React.FC = () => {
     { path: '/actuators', label: 'Actuators', icon: <TuneIcon /> },
     { path: '/alert-rules', label: 'Alert Rules', icon: <RuleIcon /> },
     { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon /> },
+    { path: '/command-history', label: 'Commands', icon: <HistoryIcon /> },
   ];
 
   return (

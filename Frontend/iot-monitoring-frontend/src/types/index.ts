@@ -120,6 +120,9 @@ export interface Actuator {
   controlUnit?: string;
   isActive: boolean;
   feedbackSensorId?: number;
+  /** Last confirmed state from device ACK: "on", "off", or analog value string */
+  lastKnownState?: string;
+  lastStateAt?: string;
   createdAt: string;
   updatedAt: string;
 }

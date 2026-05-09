@@ -7,13 +7,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MQTTnet;
+using MQTTnet.Protocol;
 using System.Buffers;
 using System.Text;
 using System.Text.Json;
 
 namespace IoTMonitoringSystem.API.Services
 {
-    public class MqttService : BackgroundService, IMqttRuntimeState
+    public class MqttService : BackgroundService, IMqttRuntimeState, IMqttPublisher
     {
         private readonly ILogger<MqttService> _logger;
         private readonly IServiceProvider _serviceProvider;
@@ -159,6 +160,20 @@ namespace IoTMonitoringSystem.API.Services
                     await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 }
             }
+        }
+
+        public async Task PublishAsync(string topic, string payload, CancellationToken cancellationToken = default)
+        {
+            if (_mqttClient == null || !_mqttClient.IsConnected)
+                throw new InvalidOperationException("MQTT client is not connected. Cannot publish command.");
+
+            var message = new MqttApplicationMessageBuilder()
+                .WithTopic(topic)
+                .WithPayload(Encoding.UTF8.GetBytes(payload))
+                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                .Build();
+
+            await _mqttClient.PublishAsync(message, cancellationToken);
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)

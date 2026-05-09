@@ -28,7 +28,7 @@ from typing import Optional, Tuple
 # SENSOR MAPPING — Edit these to match your device and sensor in the system
 # =============================================================================
 DEVICE_ID = 1          # The DeviceId in the database
-SENSOR_ID = 1          # The SensorId in the database
+SENSOR_ID = 3          # The SensorId in the database
 SENSOR_LABEL = "Temperature Sensor"   # Label for display only
 
 # =============================================================================

@@ -185,6 +185,8 @@ namespace IoTMonitoringSystem.Services
                 ControlUnit = a.ControlUnit,
                 IsActive = a.IsActive,
                 FeedbackSensorId = a.FeedbackSensorId,
+                LastKnownState = a.LastKnownState,
+                LastStateAt = a.LastStateAt,
                 CreatedAt = a.CreatedAt,
                 UpdatedAt = a.UpdatedAt
             };

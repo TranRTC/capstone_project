@@ -16,6 +16,9 @@ namespace IoTMonitoringSystem.Core.DTOs
         public string? ControlUnit { get; set; }
         public bool IsActive { get; set; }
         public int? FeedbackSensorId { get; set; }
+        /// <summary>Last confirmed state from device ACK (e.g. "on", "off", or analog value).</summary>
+        public string? LastKnownState { get; set; }
+        public DateTime? LastStateAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

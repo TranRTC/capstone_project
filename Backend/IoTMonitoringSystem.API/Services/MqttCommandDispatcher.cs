@@ -2,85 +2,55 @@ using IoTMonitoringSystem.Core.Entities;
 using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Services;
 using Microsoft.EntityFrameworkCore;
-using MQTTnet;
-using System.Text;
 using System.Text.Json;
 
 namespace IoTMonitoringSystem.API.Services
 {
+    /// <summary>
+    /// Dispatches device commands via the persistent MqttService connection
+    /// instead of opening a new TCP connection per command.
+    /// </summary>
     public class MqttCommandDispatcher : IDeviceCommandDispatcher
     {
-        private readonly IConfiguration _configuration;
+        private readonly IMqttPublisher _mqttPublisher;
         private readonly ILogger<MqttCommandDispatcher> _logger;
         private readonly ApplicationDbContext _context;
 
         public MqttCommandDispatcher(
-            IConfiguration configuration,
+            IMqttPublisher mqttPublisher,
             ILogger<MqttCommandDispatcher> logger,
             ApplicationDbContext context)
         {
-            _configuration = configuration;
+            _mqttPublisher = mqttPublisher;
             _logger = logger;
             _context = context;
         }
 
         public async Task DispatchAsync(DeviceCommand command, CancellationToken cancellationToken = default)
         {
-            var mqttHost = _configuration.GetValue<string>("Mqtt:Host", "localhost");
-            var mqttPort = _configuration.GetValue<int>("Mqtt:Port", 1883);
-            var mqttEnableTls = _configuration.GetValue<bool>("Mqtt:EnableTls", false);
-            var mqttAllowUntrustedTls = _configuration.GetValue<bool>("Mqtt:AllowUntrustedTls", false);
-            var mqttUsername = _configuration.GetValue<string>("Mqtt:Username");
-            var mqttPassword = _configuration.GetValue<string>("Mqtt:Password");
-
-            var factory = new MqttClientFactory();
-            using var mqttClient = factory.CreateMqttClient();
-
-            var optionsBuilder = new MqttClientOptionsBuilder()
-                .WithTcpServer(mqttHost, mqttPort)
-                .WithClientId($"IoTMonitoringSystem_CommandDispatcher_{Guid.NewGuid():N}");
-
-            if (!string.IsNullOrWhiteSpace(mqttUsername))
+            if (!_mqttPublisher.IsConnected)
             {
-                optionsBuilder = optionsBuilder.WithCredentials(mqttUsername, mqttPassword);
+                throw new InvalidOperationException(
+                    "MQTT broker is not connected. Command cannot be dispatched until the connection is restored.");
             }
-            if (mqttEnableTls)
-            {
-                optionsBuilder = optionsBuilder.WithTlsOptions(tls => tls.UseTls());
-                if (mqttAllowUntrustedTls)
-                {
-                    _logger.LogWarning("Mqtt:AllowUntrustedTls is enabled, but current MQTTnet TLS builder does not expose trust-bypass flags in this project version.");
-                }
-            }
-
-            var options = optionsBuilder.Build();
-
-            await mqttClient.ConnectAsync(options, cancellationToken);
 
             var topic = $"devices/{command.DeviceId}/commands";
             var payload = await BuildCommandPayloadAsync(command, cancellationToken);
 
-            var message = new MqttApplicationMessageBuilder()
-                .WithTopic(topic)
-                .WithPayload(payload)
-                .WithQualityOfServiceLevel(MQTTnet.Protocol.MqttQualityOfServiceLevel.AtLeastOnce)
-                .Build();
+            await _mqttPublisher.PublishAsync(topic, payload, cancellationToken);
 
-            await mqttClient.PublishAsync(message, cancellationToken);
             _logger.LogInformation(
-                "Published command {CommandId} to topic {Topic} (TLS={TlsEnabled}, UsernameConfigured={HasUsername})",
+                "Dispatched command {CommandId} (type={CommandType}) to topic {Topic}",
                 command.CommandId,
-                topic,
-                mqttEnableTls,
-                !string.IsNullOrWhiteSpace(mqttUsername));
-
-            await mqttClient.DisconnectAsync(cancellationToken: cancellationToken);
+                command.CommandType,
+                topic);
         }
 
-        private async Task<byte[]> BuildCommandPayloadAsync(DeviceCommand command, CancellationToken cancellationToken)
+        private async Task<string> BuildCommandPayloadAsync(DeviceCommand command, CancellationToken cancellationToken)
         {
             var payloadElement = JsonSerializer.Deserialize<JsonElement>(command.Payload);
             string? channel = null;
+
             if (command.ActuatorId.HasValue)
             {
                 var actuator = await _context.Actuators.AsNoTracking()
@@ -88,7 +58,7 @@ namespace IoTMonitoringSystem.API.Services
                 channel = actuator?.Channel;
             }
 
-            var commandEnvelope = new
+            var envelope = new
             {
                 commandId = command.CommandId,
                 correlationId = command.CorrelationId,
@@ -99,7 +69,7 @@ namespace IoTMonitoringSystem.API.Services
                 channel
             };
 
-            return Encoding.UTF8.GetBytes(JsonSerializer.Serialize(commandEnvelope));
+            return JsonSerializer.Serialize(envelope);
         }
     }
 }

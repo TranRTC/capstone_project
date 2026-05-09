@@ -155,8 +155,53 @@ namespace IoTMonitoringSystem.Services
 
             command.ErrorMessage = errorMessage;
 
+            // On successful ACK, update the actuator's last known state
+            if (status == "Acked" && command.ActuatorId.HasValue)
+            {
+                await UpdateActuatorLastStateAsync(command);
+            }
+
             var updated = await _deviceCommandRepository.UpdateAsync(command);
             return MapToDto(updated);
+        }
+
+        private async Task UpdateActuatorLastStateAsync(DeviceCommand command)
+        {
+            var actuator = await _context.Actuators
+                .FirstOrDefaultAsync(a => a.ActuatorId == command.ActuatorId!.Value);
+
+            if (actuator == null) return;
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(command.Payload);
+                var root = doc.RootElement;
+
+                string? newState = null;
+
+                if (command.CommandType.Equals("SetPower", StringComparison.OrdinalIgnoreCase) &&
+                    root.TryGetProperty("on", out var onProp))
+                {
+                    newState = onProp.GetBoolean() ? "on" : "off";
+                }
+                else if (command.CommandType.Equals("SetValue", StringComparison.OrdinalIgnoreCase) &&
+                         root.TryGetProperty("value", out var valProp))
+                {
+                    newState = valProp.GetDecimal().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                }
+
+                if (newState != null)
+                {
+                    actuator.LastKnownState = newState;
+                    actuator.LastStateAt = DateTime.UtcNow;
+                    _context.Actuators.Update(actuator);
+                    await _context.SaveChangesAsync();
+                }
+            }
+            catch
+            {
+                // State update is best-effort; don't fail the ACK processing
+            }
         }
 
         private async Task ValidateCommandAsync(Device device, CreateDeviceCommandDto dto, Actuator? actuator)
