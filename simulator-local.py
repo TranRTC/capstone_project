@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
-Temperature Sensor Simulator
-Creates a device and temperature sensor via API, then sends realistic temperature readings via MQTT
+simulator-local.py — Local Temperature Sensor Simulator
+========================================================
+For LOCAL testing only. Connects to:
+  - Local API:          http://localhost:5000/api/v1
+  - Local MQTT broker:  localhost:1883 (no TLS, no credentials)
+
+Edit the SENSOR MAPPING section below to match your device/sensor, then run:
+  python simulator-local.py
+
+Requires:
+  - Backend running at localhost:5000
+  - Mosquitto MQTT broker running at localhost:1883
 """
 
 import paho.mqtt.client as mqtt
@@ -14,12 +24,25 @@ import requests
 from datetime import datetime
 from typing import Optional, Tuple
 
-# Configuration
-API_BASE_URL = "http://localhost:5000/api/v1"
+# =============================================================================
+# SENSOR MAPPING — Edit these to match your device and sensor in the system
+# =============================================================================
+DEVICE_ID = 1          # The DeviceId in the database
+SENSOR_ID = 1          # The SensorId in the database
+SENSOR_LABEL = "Temperature Sensor"   # Label for display only
+
+# =============================================================================
+# MQTT BROKER — Local Mosquitto (no TLS, no credentials)
+# =============================================================================
 MQTT_BROKER_HOST = "localhost"
 MQTT_BROKER_PORT = 1883
 
-# Default device and sensor configuration
+# =============================================================================
+# API
+# =============================================================================
+API_BASE_URL = "http://localhost:5000/api/v1"
+
+# Default device and sensor configuration (used only if no DEVICE_ID/SENSOR_ID set)
 DEFAULT_DEVICE_NAME = "Temperature Monitoring Device"
 DEFAULT_DEVICE_TYPE = "Environmental Monitor"
 DEFAULT_SENSOR_NAME = "Temperature Sensor"
@@ -168,25 +191,20 @@ class TemperatureSimulator:
     def create_mqtt_client(self) -> mqtt.Client:
         """Create and configure MQTT client"""
         client_id = f"temp_sensor_{self.device_id}_{self.sensor_id}"
-        client = mqtt.Client(client_id=client_id)
-        
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id)
+
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
                 print(f"✓ Connected to MQTT broker at {self.mqtt_host}:{self.mqtt_port}")
             else:
-                print(f"✗ Failed to connect to MQTT broker. Return code: {rc}")
-        
+                print(f"✗ Failed to connect. Return code: {rc}")
+
         def on_publish(client, userdata, mid):
-            pass  # Silent publish confirmation
-        
-        def on_disconnect(client, userdata, rc):
-            if rc != 0:
-                print(f"⚠ Unexpected MQTT disconnection. Return code: {rc}")
-        
+            pass
+
         client.on_connect = on_connect
         client.on_publish = on_publish
-        client.on_disconnect = on_disconnect
-        
+
         return client
     
     def send_temperature_reading(self, temperature: float) -> bool:
@@ -194,13 +212,19 @@ class TemperatureSimulator:
         if not self.device_id or not self.sensor_id:
             print("✗ Device or sensor ID not set")
             return False
-        
+
         topic = f"devices/{self.device_id}/sensors/{self.sensor_id}/readings"
         payload = {
             "value": temperature,
             "timestamp": datetime.utcnow().isoformat()
         }
-        
+
+        # Wait up to 5s for connection before publishing
+        for _ in range(10):
+            if self.mqtt_client.is_connected():
+                break
+            time.sleep(0.5)
+
         try:
             result = self.mqtt_client.publish(topic, json.dumps(payload), qos=1)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
@@ -220,7 +244,9 @@ class TemperatureSimulator:
             sensor_type: str = DEFAULT_SENSOR_TYPE,
             location: str = "Simulation Lab",
             interval: int = 5,
-            duration: Optional[int] = None):
+            duration: Optional[int] = None,
+            device_id: Optional[int] = None,
+            sensor_id: Optional[int] = None):
         """Run the temperature sensor simulator"""
         print(f"\n{'='*70}")
         print(f"Temperature Sensor Simulator")
@@ -233,30 +259,37 @@ class TemperatureSimulator:
             return False
         print("✓ API is accessible\n")
         
-        # Find or create device
-        print("Setting up device...")
-        self.device_id = self.find_or_create_device(device_name, device_type, location)
-        if not self.device_id:
-            print("✗ Failed to setup device")
-            return False
-        
-        # Find or create sensor
-        print("\nSetting up sensor...")
-        self.sensor_id = self.find_or_create_sensor(self.device_id, sensor_name, sensor_type)
-        if not self.sensor_id:
-            print("✗ Failed to setup sensor")
-            return False
+        if device_id and sensor_id:
+            # Use hardcoded or CLI-provided IDs directly — skip find/create
+            self.device_id = device_id
+            self.sensor_id = sensor_id
+            print(f"✓ Using Device ID: {self.device_id}, Sensor ID: {self.sensor_id} ({SENSOR_LABEL})\n")
+        else:
+            # Find or create device
+            print("Setting up device...")
+            self.device_id = self.find_or_create_device(device_name, device_type, location)
+            if not self.device_id:
+                print("✗ Failed to setup device")
+                return False
+            
+            # Find or create sensor
+            print("\nSetting up sensor...")
+            self.sensor_id = self.find_or_create_sensor(self.device_id, sensor_name, sensor_type)
+            if not self.sensor_id:
+                print("✗ Failed to setup sensor")
+                return False
         
         # Connect to MQTT
         print(f"\nConnecting to MQTT broker at {self.mqtt_host}:{self.mqtt_port}...")
         self.mqtt_client = self.create_mqtt_client()
         
         try:
-            self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, 60)
+            self.mqtt_client.reconnect_delay_set(min_delay=2, max_delay=10)
+            self.mqtt_client.connect(self.mqtt_host, self.mqtt_port, keepalive=60)
             self.mqtt_client.loop_start()
-            
-            # Wait for connection
-            time.sleep(2)
+
+            # Wait for connection to stabilise
+            time.sleep(3)
             
             print(f"\n{'='*70}")
             print(f"Starting temperature simulation...")
@@ -314,13 +347,13 @@ def main():
         epilog="""
 Examples:
   # Run with default settings (5 second intervals, continuous)
-  python temperature-sensor-simulator.py
+  python simulator-local.py
   
   # Run for 60 seconds with 3 second intervals
-  python temperature-sensor-simulator.py --interval 3 --duration 60
+  python simulator-local.py --interval 3 --duration 60
   
   # Use custom device and sensor names
-  python temperature-sensor-simulator.py --device-name "Lab Sensor" --sensor-name "Room Temp"
+  python simulator-local.py --device-name "Lab Sensor" --sensor-name "Room Temp"
         """
     )
     
@@ -338,6 +371,10 @@ Examples:
                        help="Interval between readings in seconds (default: 5)")
     parser.add_argument("--duration", type=int, default=None,
                        help="Duration to run in seconds (default: run indefinitely)")
+    parser.add_argument("--device-id", type=int, default=DEVICE_ID,
+                       help=f"Device ID to simulate (default: {DEVICE_ID})")
+    parser.add_argument("--sensor-id", type=int, default=SENSOR_ID,
+                       help=f"Sensor ID to simulate (default: {SENSOR_ID})")
     parser.add_argument("--api-url", type=str, default=API_BASE_URL,
                        help=f"API base URL (default: {API_BASE_URL})")
     parser.add_argument("--mqtt-host", type=str, default=MQTT_BROKER_HOST,
@@ -360,7 +397,9 @@ Examples:
         sensor_type=args.sensor_type,
         location=args.location,
         interval=args.interval,
-        duration=args.duration
+        duration=args.duration,
+        device_id=args.device_id,
+        sensor_id=args.sensor_id
     )
     
     sys.exit(0 if success else 1)
