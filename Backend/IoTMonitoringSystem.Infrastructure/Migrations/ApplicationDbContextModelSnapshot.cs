@@ -166,6 +166,12 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<decimal?>("MaxValue")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("MinValue")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<string>("RuleName")
                         .IsRequired()
                         .HasMaxLength(100)

@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogActions,
   FormControl,
+  FormHelperText,
   InputLabel,
   Select,
   MenuItem,
@@ -46,6 +47,8 @@ import {
   Sensor,
   CreateActuator,
   CreateSensor,
+  AlertRule,
+  CreateAlertRule,
 } from '../types';
 
 const panelSx = {
@@ -156,6 +159,22 @@ const DeviceDetailPage: React.FC = () => {
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null);
   const [feedbackLinkSavingId, setFeedbackLinkSavingId] = useState<number | null>(null);
 
+  // Alert Rules state
+  const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
+  const [alertRulesLoading, setAlertRulesLoading] = useState(false);
+  const [arDialogOpen, setArDialogOpen] = useState(false);
+  const [arEditingRule, setArEditingRule] = useState<AlertRule | null>(null);
+  const [arForm, setArForm] = useState<{
+    ruleName: string; ruleType: string; condition: string; severity: string;
+    isEnabled: boolean; thresholdValue: string; comparisonOperator: string;
+    minValue: string; maxValue: string; sensorId: number | '';
+  }>({
+    ruleName: '', ruleType: 'threshold', condition: '', severity: 'Medium',
+    isEnabled: true, thresholdValue: '', comparisonOperator: '>', minValue: '', maxValue: '', sensorId: '',
+  });
+  const [arFormError, setArFormError] = useState<string | null>(null);
+  const [arFormSaving, setArFormSaving] = useState(false);
+
   const buildCapabilityModel = (configs: DeviceConfiguration[], deviceType?: string) => {
     const lowered = (deviceType ?? '').toLowerCase();
     const fallbackActuatorLike =
@@ -228,6 +247,18 @@ const DeviceDetailPage: React.FC = () => {
     setFeedbackBySensorId(next);
   };
 
+  const loadAlertRules = async (deviceId: number) => {
+    try {
+      setAlertRulesLoading(true);
+      const data = await apiService.getAlertRulesByDevice(deviceId);
+      setAlertRules(data);
+    } catch {
+      setAlertRules([]);
+    } finally {
+      setAlertRulesLoading(false);
+    }
+  };
+
   const loadDevice = async (deviceId: number) => {
     try {
       setLoading(true);
@@ -242,6 +273,7 @@ const DeviceDetailPage: React.FC = () => {
       setDevice(deviceData);
       setSensors(sensorList);
       setActuators(actuatorList);
+      void loadAlertRules(deviceId);
       setAnalogTarget(capabilities.analogMin);
       setCapabilityDraft(capabilities);
 
@@ -887,6 +919,220 @@ const DeviceDetailPage: React.FC = () => {
             )}
           </Paper>
         </Grid>
+
+        {/* Alert Rules section */}
+        <Grid item xs={12}>
+          <Paper sx={panelSx}>
+            <Box sx={sectionHeaderSx}>
+              <Typography variant="h6" sx={{ lineHeight: 1.25 }}>Alert Rules</Typography>
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Button
+                  component={RouterLink}
+                  to={`/alert-rules?deviceId=${device.deviceId}`}
+                  variant="outlined"
+                  size="small"
+                >
+                  Manage all rules
+                </Button>
+                <Button
+                  startIcon={<AddIcon />}
+                  variant="contained"
+                  size="small"
+                  onClick={() => {
+                    setArEditingRule(null);
+                    setArForm({ ruleName: '', ruleType: 'threshold', condition: '', severity: 'Medium', isEnabled: true, thresholdValue: '', comparisonOperator: '>', minValue: '', maxValue: '', sensorId: '' });
+                    setArFormError(null);
+                    setArDialogOpen(true);
+                  }}
+                >
+                  Add rule
+                </Button>
+              </Stack>
+            </Box>
+            {alertRulesLoading ? (
+              <Stack spacing={1}>
+                {[1, 2].map((k) => <Skeleton key={k} variant="rounded" height={44} />)}
+              </Stack>
+            ) : alertRules.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No alert rules for this device. Add one to start monitoring thresholds.
+              </Typography>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Rule Name</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Condition</TableCell>
+                      <TableCell>Sensor</TableCell>
+                      <TableCell>Severity</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {alertRules.map((rule) => {
+                      const sensor = sensors.find((s) => s.sensorId === rule.sensorId);
+                      const condSummary = rule.ruleType.toLowerCase() === 'threshold'
+                        ? `Value ${rule.comparisonOperator ?? '>'} ${rule.thresholdValue ?? '—'}`
+                        : rule.ruleType.toLowerCase() === 'range'
+                        ? `${rule.minValue ?? '—'} to ${rule.maxValue ?? '—'}`
+                        : 'Any state change';
+                      return (
+                        <TableRow key={rule.alertRuleId} hover>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={500}>{rule.ruleName}</Typography>
+                            <Typography variant="caption" color="text.secondary">{rule.condition}</Typography>
+                          </TableCell>
+                          <TableCell><Chip label={rule.ruleType} size="small" variant="outlined" /></TableCell>
+                          <TableCell><Typography variant="body2">{condSummary}</Typography></TableCell>
+                          <TableCell>
+                            <Typography variant="body2">{sensor ? sensor.sensorName : rule.sensorId ? `Sensor ${rule.sensorId}` : 'All sensors'}</Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={rule.severity}
+                              color={rule.severity.toLowerCase() === 'critical' ? 'error' : rule.severity.toLowerCase() === 'high' ? 'warning' : rule.severity.toLowerCase() === 'medium' ? 'info' : 'default'}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={rule.isEnabled ? 'Enabled' : 'Disabled'} color={rule.isEnabled ? 'success' : 'default'} size="small" variant={rule.isEnabled ? 'filled' : 'outlined'} />
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton size="small" title="Edit" onClick={() => {
+                              setArEditingRule(rule);
+                              setArForm({
+                                ruleName: rule.ruleName,
+                                ruleType: rule.ruleType.toLowerCase(),
+                                condition: rule.condition,
+                                severity: rule.severity,
+                                isEnabled: rule.isEnabled,
+                                thresholdValue: rule.thresholdValue != null ? String(rule.thresholdValue) : '',
+                                comparisonOperator: rule.comparisonOperator ?? '>',
+                                minValue: rule.minValue != null ? String(rule.minValue) : '',
+                                maxValue: rule.maxValue != null ? String(rule.maxValue) : '',
+                                sensorId: rule.sensorId ?? '',
+                              });
+                              setArFormError(null);
+                              setArDialogOpen(true);
+                            }}>
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" title="Delete" color="error" onClick={async () => {
+                              if (!window.confirm(`Delete rule "${rule.ruleName}"?`)) return;
+                              try {
+                                await apiService.deleteAlertRule(rule.alertRuleId);
+                                void loadAlertRules(device.deviceId);
+                              } catch (err: any) {
+                                alert(err?.message || 'Failed to delete rule.');
+                              }
+                            }}>
+                              <DeleteOutlineIcon fontSize="small" />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Grid>
+
+        {/* Alert Rule Add/Edit Dialog */}
+        <Dialog open={arDialogOpen} onClose={() => setArDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{arEditingRule ? 'Edit Alert Rule' : 'Add Alert Rule'}</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {arFormError && <MuiAlert severity="error">{arFormError}</MuiAlert>}
+              <TextField label="Rule Name" required fullWidth value={arForm.ruleName} onChange={(e) => setArForm((f) => ({ ...f, ruleName: e.target.value }))} />
+              <FormControl fullWidth required>
+                <InputLabel>Rule Type</InputLabel>
+                <Select value={arForm.ruleType} label="Rule Type" onChange={(e) => setArForm((f) => ({ ...f, ruleType: e.target.value }))}>
+                  {['threshold', 'range', 'change'].map((t) => <MenuItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</MenuItem>)}
+                </Select>
+                <FormHelperText>
+                  {arForm.ruleType === 'threshold' && 'Fires when value crosses a single threshold.'}
+                  {arForm.ruleType === 'range' && 'Fires when value goes outside the min–max range.'}
+                  {arForm.ruleType === 'change' && 'Fires when the sensor value changes from its previous reading.'}
+                </FormHelperText>
+              </FormControl>
+              {arForm.ruleType === 'threshold' && (
+                <Stack direction="row" spacing={2}>
+                  <FormControl sx={{ minWidth: 120 }} required>
+                    <InputLabel>Operator</InputLabel>
+                    <Select value={arForm.comparisonOperator} label="Operator" onChange={(e) => setArForm((f) => ({ ...f, comparisonOperator: e.target.value }))}>
+                      {['>', '>=', '<', '<=', '==', '!='].map((op) => <MenuItem key={op} value={op}>{op}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                  <TextField label="Threshold Value" type="number" required fullWidth value={arForm.thresholdValue} onChange={(e) => setArForm((f) => ({ ...f, thresholdValue: e.target.value }))} />
+                </Stack>
+              )}
+              {arForm.ruleType === 'range' && (
+                <Stack direction="row" spacing={2}>
+                  <TextField label="Min Value" type="number" required fullWidth value={arForm.minValue} onChange={(e) => setArForm((f) => ({ ...f, minValue: e.target.value }))} helperText="Alert if value goes below this" />
+                  <TextField label="Max Value" type="number" required fullWidth value={arForm.maxValue} onChange={(e) => setArForm((f) => ({ ...f, maxValue: e.target.value }))} helperText="Alert if value goes above this" />
+                </Stack>
+              )}
+              <FormControl fullWidth>
+                <InputLabel>Sensor (optional)</InputLabel>
+                <Select value={arForm.sensorId} label="Sensor (optional)" onChange={(e) => setArForm((f) => ({ ...f, sensorId: e.target.value as number | '' }))}>
+                  <MenuItem value="">All sensors on this device</MenuItem>
+                  {sensors.map((s) => <MenuItem key={s.sensorId} value={s.sensorId}>{s.sensorName} ({s.sensorType}{s.unit ? `, ${s.unit}` : ''})</MenuItem>)}
+                </Select>
+                <FormHelperText>Leave blank to apply to all sensors on this device.</FormHelperText>
+              </FormControl>
+              <FormControl fullWidth required>
+                <InputLabel>Severity</InputLabel>
+                <Select value={arForm.severity} label="Severity" onChange={(e) => setArForm((f) => ({ ...f, severity: e.target.value }))}>
+                  {['Low', 'Medium', 'High', 'Critical'].map((s) => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                </Select>
+              </FormControl>
+              <TextField label="Condition / Alert Message" required fullWidth multiline rows={2} value={arForm.condition} onChange={(e) => setArForm((f) => ({ ...f, condition: e.target.value }))} helperText="This message appears on the alert when it fires." />
+              <FormControlLabel control={<Switch checked={arForm.isEnabled} onChange={(e) => setArForm((f) => ({ ...f, isEnabled: e.target.checked }))} />} label="Enabled" />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setArDialogOpen(false)} disabled={arFormSaving}>Cancel</Button>
+            <Button variant="contained" disabled={arFormSaving} onClick={async () => {
+              if (!arForm.ruleName.trim()) { setArFormError('Rule Name is required.'); return; }
+              if (!arForm.condition.trim()) { setArFormError('Condition / Message is required.'); return; }
+              if (arForm.ruleType === 'threshold' && arForm.thresholdValue === '') { setArFormError('Threshold Value is required.'); return; }
+              if (arForm.ruleType === 'range' && (arForm.minValue === '' || arForm.maxValue === '')) { setArFormError('Min and Max Value are required.'); return; }
+              setArFormSaving(true);
+              setArFormError(null);
+              try {
+                const payload: CreateAlertRule = {
+                  deviceId: device.deviceId,
+                  sensorId: arForm.sensorId !== '' ? arForm.sensorId : undefined,
+                  ruleName: arForm.ruleName.trim(),
+                  ruleType: arForm.ruleType,
+                  condition: arForm.condition.trim(),
+                  severity: arForm.severity,
+                  isEnabled: arForm.isEnabled,
+                  ...(arForm.ruleType === 'threshold' && { thresholdValue: Number(arForm.thresholdValue), comparisonOperator: arForm.comparisonOperator }),
+                  ...(arForm.ruleType === 'range' && { minValue: Number(arForm.minValue), maxValue: Number(arForm.maxValue) }),
+                };
+                if (arEditingRule) {
+                  await apiService.updateAlertRule(arEditingRule.alertRuleId, payload);
+                } else {
+                  await apiService.createAlertRule(payload);
+                }
+                setArDialogOpen(false);
+                void loadAlertRules(device.deviceId);
+              } catch (err: any) {
+                setArFormError(err?.message || 'Failed to save rule.');
+              } finally {
+                setArFormSaving(false);
+              }
+            }}>
+              {arFormSaving ? 'Saving…' : arEditingRule ? 'Save Changes' : 'Add Rule'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {isControllableDevice && (
           <Grid item xs={12}>

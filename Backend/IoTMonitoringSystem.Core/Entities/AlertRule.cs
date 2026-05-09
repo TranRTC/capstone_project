@@ -30,6 +30,12 @@ namespace IoTMonitoringSystem.Core.Entities
         [MaxLength(10)]
         public string? ComparisonOperator { get; set; }
 
+        [Column(TypeName = "decimal(18,4)")]
+        public decimal? MinValue { get; set; }
+
+        [Column(TypeName = "decimal(18,4)")]
+        public decimal? MaxValue { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Severity { get; set; } = string.Empty;

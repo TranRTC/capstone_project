@@ -10,6 +10,7 @@ import DeviceDetailPage from './pages/DeviceDetailPage';
 import SensorsPage from './pages/SensorsPage';
 import ActuatorsPage from './pages/ActuatorsPage';
 import AlertsPage from './pages/AlertsPage';
+import AlertRulesPage from './pages/AlertRulesPage';
 import { appTheme } from './theme';
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
               <Route path="/devices/:id" element={<DeviceDetailPage />} />
               <Route path="/sensors" element={<SensorsPage />} />
               <Route path="/actuators" element={<ActuatorsPage />} />
+              <Route path="/alert-rules" element={<AlertRulesPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
             </Routes>
           </Container>

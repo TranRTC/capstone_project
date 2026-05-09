@@ -139,9 +139,9 @@ namespace IoTMonitoringSystem.Services
                         shouldTrigger = EvaluateRangeRule(rule, reading.Value);
                         break;
                     case "change":
-                        // For change detection, we'd need previous reading - simplified for now
-                        shouldTrigger = false;
+                        shouldTrigger = await EvaluateChangeRuleAsync(rule, reading);
                         break;
+
                     default:
                         continue;
                 }
@@ -175,9 +175,25 @@ namespace IoTMonitoringSystem.Services
 
         private bool EvaluateRangeRule(AlertRule rule, decimal value)
         {
-            // Range rules would need min/max values - simplified for now
-            // This could be extended based on your requirements
-            return false;
+            if (!rule.MinValue.HasValue || !rule.MaxValue.HasValue)
+                return false;
+
+            return value < rule.MinValue.Value || value > rule.MaxValue.Value;
+        }
+
+        private async Task<bool> EvaluateChangeRuleAsync(AlertRule rule, SensorReadingDto reading)
+        {
+            var previousReading = await _context.SensorReadings
+                .Where(r => r.SensorId == reading.SensorId &&
+                            r.DeviceId == reading.DeviceId &&
+                            r.Timestamp < reading.Timestamp)
+                .OrderByDescending(r => r.Timestamp)
+                .FirstOrDefaultAsync();
+
+            if (previousReading == null)
+                return false;
+
+            return previousReading.Value != reading.Value;
         }
 
         private async Task CreateAlertAsync(AlertRule rule, SensorReadingDto reading)

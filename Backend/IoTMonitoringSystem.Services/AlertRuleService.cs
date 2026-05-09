@@ -64,6 +64,8 @@ namespace IoTMonitoringSystem.Services
                 Condition = dto.Condition,
                 ThresholdValue = dto.ThresholdValue,
                 ComparisonOperator = dto.ComparisonOperator,
+                MinValue = dto.MinValue,
+                MaxValue = dto.MaxValue,
                 Severity = dto.Severity,
                 IsEnabled = dto.IsEnabled,
                 CreatedAt = DateTime.UtcNow,
@@ -92,6 +94,10 @@ namespace IoTMonitoringSystem.Services
                 rule.ThresholdValue = dto.ThresholdValue;
             if (dto.ComparisonOperator != null)
                 rule.ComparisonOperator = dto.ComparisonOperator;
+            if (dto.MinValue.HasValue)
+                rule.MinValue = dto.MinValue;
+            if (dto.MaxValue.HasValue)
+                rule.MaxValue = dto.MaxValue;
             if (dto.Severity != null)
                 rule.Severity = dto.Severity;
             if (dto.IsEnabled.HasValue)
@@ -138,6 +144,8 @@ namespace IoTMonitoringSystem.Services
                 Condition = rule.Condition,
                 ThresholdValue = rule.ThresholdValue,
                 ComparisonOperator = rule.ComparisonOperator,
+                MinValue = rule.MinValue,
+                MaxValue = rule.MaxValue,
                 Severity = rule.Severity,
                 IsEnabled = rule.IsEnabled,
                 CreatedAt = rule.CreatedAt,

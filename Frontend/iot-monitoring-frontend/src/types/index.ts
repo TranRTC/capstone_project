@@ -184,6 +184,8 @@ export interface AlertRule {
   condition: string;
   thresholdValue?: number;
   comparisonOperator?: string;
+  minValue?: number;
+  maxValue?: number;
   severity: string;
   isEnabled: boolean;
   createdAt: string;
@@ -198,6 +200,8 @@ export interface CreateAlertRule {
   condition: string;
   thresholdValue?: number;
   comparisonOperator?: string;
+  minValue?: number;
+  maxValue?: number;
   severity: string;
   isEnabled: boolean;
 }

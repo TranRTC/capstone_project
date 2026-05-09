@@ -25,6 +25,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         [MaxLength(10)]
         public string? ComparisonOperator { get; set; }
 
+        public decimal? MinValue { get; set; }
+
+        public decimal? MaxValue { get; set; }
+
         [Required]
         [MaxLength(20)]
         public string Severity { get; set; } = string.Empty;
@@ -48,6 +52,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         [MaxLength(10)]
         public string? ComparisonOperator { get; set; }
 
+        public decimal? MinValue { get; set; }
+
+        public decimal? MaxValue { get; set; }
+
         [MaxLength(20)]
         public string? Severity { get; set; }
 
@@ -64,6 +72,8 @@ namespace IoTMonitoringSystem.Core.DTOs
         public string Condition { get; set; } = string.Empty;
         public decimal? ThresholdValue { get; set; }
         public string? ComparisonOperator { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
         public string Severity { get; set; } = string.Empty;
         public bool IsEnabled { get; set; }
         public DateTime CreatedAt { get; set; }

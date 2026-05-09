@@ -144,6 +144,21 @@ else
     startupLogger.LogWarning("No Cors:AllowedOrigins configured; localhost fallback origins will be used.");
 }
 
+// Apply pending EF migrations automatically on startup
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "An error occurred while applying database migrations.");
+    }
+}
+
 // Configure the HTTP request pipeline
 // CORS must come FIRST, before any other middleware that might redirect
 app.UseCors("AllowReactApp");

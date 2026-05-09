@@ -304,6 +304,11 @@ class ApiService {
     return response.data.data || [];
   }
 
+  async getAlertRulesByDevice(deviceId: number): Promise<AlertRule[]> {
+    const response = await this.api.get<ApiResponse<AlertRule[]>>(`/alertrules/devices/${deviceId}`);
+    return response.data.data || [];
+  }
+
   async createAlertRule(rule: CreateAlertRule): Promise<AlertRule> {
     const response = await this.api.post<ApiResponse<AlertRule>>('/alertrules', rule);
     if (!response.data.data) {
