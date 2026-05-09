@@ -1,9 +1,11 @@
 using IoTMonitoringSystem.Core.DTOs;
 using IoTMonitoringSystem.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace IoTMonitoringSystem.API.Controllers
 {
+    [Authorize]
     [ApiController]
     [Route("api/v1/devices/{deviceId:int}/commands")]
     public class DeviceCommandsController : ControllerBase

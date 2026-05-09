@@ -20,6 +20,7 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<DeviceConfiguration> DeviceConfigurations { get; set; }
         public DbSet<DeviceCommand> DeviceCommands { get; set; }
         public DbSet<Actuator> Actuators { get; set; }
+        public DbSet<User> Users { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

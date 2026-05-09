@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using IoTMonitoringSystem.Core.DTOs;
 using IoTMonitoringSystem.API.Services;
@@ -6,6 +7,7 @@ using System.Net.Sockets;
 
 namespace IoTMonitoringSystem.API.Controllers
 {
+    [AllowAnonymous]
     [ApiController]
     [Route("api/v1/[controller]")]
     public class HealthController : ControllerBase

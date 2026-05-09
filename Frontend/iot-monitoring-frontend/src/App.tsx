@@ -1,9 +1,11 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Container, Box } from '@mui/material';
 import Navigation from './components/common/Navigation';
+import ProtectedRoute from './components/common/ProtectedRoute';
+import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import DevicesPage from './pages/DevicesPage';
 import DeviceDetailPage from './pages/DeviceDetailPage';
@@ -24,21 +26,35 @@ function App() {
           v7_relativeSplatPath: true,
         }}
       >
-        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
-          <Navigation />
-          <Container maxWidth="xl" sx={{ mt: 3, mb: 4, flex: 1, px: { xs: 2, sm: 3 } }}>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/devices" element={<DevicesPage />} />
-              <Route path="/devices/:id" element={<DeviceDetailPage />} />
-              <Route path="/sensors" element={<SensorsPage />} />
-              <Route path="/actuators" element={<ActuatorsPage />} />
-              <Route path="/alert-rules" element={<AlertRulesPage />} />
-              <Route path="/alerts" element={<AlertsPage />} />
-              <Route path="/command-history" element={<CommandHistoryPage />} />
-            </Routes>
-          </Container>
-        </Box>
+        <Routes>
+          {/* Public route */}
+          <Route path="/login" element={<LoginPage />} />
+
+          {/* All other routes are protected */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
+                  <Navigation />
+                  <Container maxWidth="xl" sx={{ mt: 3, mb: 4, flex: 1, px: { xs: 2, sm: 3 } }}>
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/devices" element={<DevicesPage />} />
+                      <Route path="/devices/:id" element={<DeviceDetailPage />} />
+                      <Route path="/sensors" element={<SensorsPage />} />
+                      <Route path="/actuators" element={<ActuatorsPage />} />
+                      <Route path="/alert-rules" element={<AlertRulesPage />} />
+                      <Route path="/alerts" element={<AlertsPage />} />
+                      <Route path="/command-history" element={<CommandHistoryPage />} />
+                    </Routes>
+                  </Container>
+                </Box>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
       </Router>
     </ThemeProvider>
   );

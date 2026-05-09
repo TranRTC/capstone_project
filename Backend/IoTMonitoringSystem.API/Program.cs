@@ -1,5 +1,8 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Infrastructure.Repositories;
 using IoTMonitoringSystem.Services;
@@ -54,6 +57,49 @@ builder.Services.AddScoped<IAlertRuleService, AlertRuleService>();
 builder.Services.AddScoped<IDeviceCommandService, DeviceCommandService>();
 builder.Services.AddScoped<IDeviceConfigurationService, DeviceConfigurationService>();
 builder.Services.AddScoped<IActuatorService, ActuatorService>();
+
+// Auth service
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// JWT Authentication
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "IoTMonitoringSystem";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "IoTMonitoringFrontend";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtIssuer,
+        ValidAudience = jwtAudience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+    };
+
+    // Support JWT in SignalR (token passed as query param)
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/monitoringhub"))
+                context.Token = accessToken;
+            return Task.CompletedTask;
+        }
+    };
+});
+
+builder.Services.AddAuthorization();
 
 // SignalR with CORS support
 builder.Services.AddSignalR();
@@ -146,13 +192,34 @@ else
     startupLogger.LogWarning("No Cors:AllowedOrigins configured; localhost fallback origins will be used.");
 }
 
-// Apply pending EF migrations automatically on startup
+// Apply pending EF migrations automatically on startup, then seed default admin
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         db.Database.Migrate();
+
+        // Seed default admin if no users exist yet
+        if (!db.Users.Any())
+        {
+            var seedUsername = app.Configuration["AdminSeed:Username"] ?? "admin";
+            var seedPassword = app.Configuration["AdminSeed:Password"] ?? "Admin@123";
+            var seedEmail = app.Configuration["AdminSeed:Email"] ?? "admin@iot.local";
+            db.Users.Add(new IoTMonitoringSystem.Core.Entities.User
+            {
+                Username = seedUsername,
+                Email = seedEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(seedPassword),
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            db.SaveChanges();
+            var seedLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            seedLogger.LogInformation("Seeded default admin user '{Username}'.", seedUsername);
+        }
     }
     catch (Exception ex)
     {
@@ -175,6 +242,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Authentication must come BEFORE Authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

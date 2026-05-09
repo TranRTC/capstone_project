@@ -1,6 +1,6 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AppBar, Toolbar, Typography, Button, Box, Chip, Divider } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
   Devices as DevicesIcon,
@@ -9,13 +9,18 @@ import {
   Notifications as NotificationsIcon,
   Rule as RuleIcon,
   History as HistoryIcon,
+  Logout as LogoutIcon,
+  Person as PersonIcon,
 } from '@mui/icons-material';
+import authService from '../../services/authService';
 
 const Navigation: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const currentUser = authService.getCurrentUser();
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: <DashboardIcon /> },
+    { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { path: '/devices', label: 'Devices', icon: <DevicesIcon /> },
     { path: '/sensors', label: 'Sensors', icon: <SensorsIcon /> },
     { path: '/actuators', label: 'Actuators', icon: <TuneIcon /> },
@@ -23,6 +28,11 @@ const Navigation: React.FC = () => {
     { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon /> },
     { path: '/command-history', label: 'Commands', icon: <HistoryIcon /> },
   ];
+
+  const handleLogout = () => {
+    authService.logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <AppBar position="static">
@@ -32,7 +42,7 @@ const Navigation: React.FC = () => {
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {navItems.map((item) => {
-            const active = location.pathname === item.path;
+            const active = location.pathname === item.path || (item.path === '/dashboard' && location.pathname === '/');
             return (
               <Button
                 key={item.path}
@@ -50,6 +60,27 @@ const Navigation: React.FC = () => {
               </Button>
             );
           })}
+
+          <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
+
+          {currentUser && (
+            <Chip
+              icon={<PersonIcon />}
+              label={`${currentUser.username} (${currentUser.role})`}
+              size="small"
+              sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.4)', mr: 1 }}
+              variant="outlined"
+            />
+          )}
+
+          <Button
+            color="inherit"
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+            sx={{ color: 'text.secondary' }}
+          >
+            Logout
+          </Button>
         </Box>
       </Toolbar>
     </AppBar>
