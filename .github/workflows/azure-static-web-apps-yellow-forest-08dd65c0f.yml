@@ -29,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: Frontend/iot-monitoring-frontend
-        run: npm ci
+        run: npm install
 
       - name: Build React App
         working-directory: Frontend/iot-monitoring-frontend
