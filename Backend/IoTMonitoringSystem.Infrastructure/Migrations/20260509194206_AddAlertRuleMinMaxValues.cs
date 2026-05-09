@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -11,13 +11,13 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<decimal>(
-                name: "MinValue",
+                name: "MaxValue",
                 table: "AlertRules",
                 type: "decimal(18,4)",
                 nullable: true);
 
             migrationBuilder.AddColumn<decimal>(
-                name: "MaxValue",
+                name: "MinValue",
                 table: "AlertRules",
                 type: "decimal(18,4)",
                 nullable: true);
@@ -27,11 +27,11 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropColumn(
-                name: "MinValue",
+                name: "MaxValue",
                 table: "AlertRules");
 
             migrationBuilder.DropColumn(
-                name: "MaxValue",
+                name: "MinValue",
                 table: "AlertRules");
         }
     }
