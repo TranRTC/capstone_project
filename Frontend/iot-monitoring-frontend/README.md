@@ -1,6 +1,6 @@
-# IoT Monitoring System - Frontend
+# IoT Dashboard — Frontend
 
-React TypeScript frontend for the IoT Device Real-Time Monitoring System.
+React TypeScript frontend for the IoT Dashboard capstone project.
 
 ## Prerequisites
 

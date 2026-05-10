@@ -42,7 +42,7 @@ const Navigation: React.FC = () => {
     <AppBar position="static">
       <Toolbar sx={{ py: 0.5 }}>
         <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: '-0.02em' }}>
-          IoT Monitoring System
+          IoT Dashboard
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           {navItems.map((item) => {

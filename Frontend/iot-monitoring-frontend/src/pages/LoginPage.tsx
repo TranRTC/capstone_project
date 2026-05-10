@@ -11,9 +11,13 @@ import {
   TextField,
   Typography,
   Alert,
+  Link,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Router as RouterIcon } from '@mui/icons-material';
 import authService from '../services/authService';
+
+const LINKEDIN_URL = 'https://www.linkedin.com/in/tranrtc';
+const GITHUB_URL = 'https://github.com/TranRTC/capstone_project';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -25,6 +29,8 @@ const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const showDevCredentials = process.env.NODE_ENV !== 'production';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,9 +59,11 @@ const LoginPage: React.FC = () => {
       sx={{
         minHeight: '100vh',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         background: 'linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%)',
+        py: 4,
       }}
     >
       <Card
@@ -87,7 +95,7 @@ const LoginPage: React.FC = () => {
               <RouterIcon sx={{ color: 'white', fontSize: 32 }} />
             </Box>
             <Typography variant="h5" fontWeight={700} color="text.primary">
-              IoT Monitoring
+              IoT Dashboard
             </Typography>
             <Typography variant="body2" color="text.secondary" mt={0.5}>
               Sign in to your account
@@ -149,11 +157,41 @@ const LoginPage: React.FC = () => {
             </Button>
           </Box>
 
-          <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={2}>
-            Default admin: <strong>admin</strong> / <strong>Admin@123</strong>
-          </Typography>
+          {showDevCredentials && (
+            <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={2}>
+              Default admin: <strong>admin</strong> / <strong>Admin@123</strong>
+            </Typography>
+          )}
         </CardContent>
       </Card>
+
+      <Box sx={{ mt: 3, maxWidth: 480, px: 2, textAlign: 'center', color: 'rgba(255,255,255,0.88)' }}>
+        <Typography variant="caption" display="block" sx={{ lineHeight: 1.6, color: 'inherit' }}>
+          BAS Application Development — Capstone Project
+        </Typography>
+        <Typography variant="caption" display="block" sx={{ mt: 0.75, lineHeight: 1.6, color: 'inherit' }}>
+          Developed By Quoc Bao Tran ·{' '}
+          <Link
+            href={LINKEDIN_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ color: 'inherit', fontWeight: 600 }}
+            underline="hover"
+          >
+            LinkedIn
+          </Link>
+          {' · '}
+          <Link
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ color: 'inherit', fontWeight: 600 }}
+            underline="hover"
+          >
+            GitHub
+          </Link>
+        </Typography>
+      </Box>
     </Box>
   );
 };

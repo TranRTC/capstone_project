@@ -2,7 +2,7 @@
 # This script will check Node.js, install dependencies, and start the frontend
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  IoT Monitoring Frontend Startup" -ForegroundColor Cyan
+Write-Host "  IoT Dashboard Frontend Startup" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
