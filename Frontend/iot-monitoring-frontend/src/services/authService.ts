@@ -41,6 +41,20 @@ authApi.interceptors.request.use((config) => {
   return config;
 });
 
+authApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 403) {
+      const friendlyError = new Error(
+        'You do not have permission to perform this action. Required role: Admin.'
+      );
+      (friendlyError as any).isForbidden = true;
+      return Promise.reject(friendlyError);
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const authService = {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     const response = await authApi.post<LoginResponse>('/auth/login', credentials);
@@ -86,6 +100,15 @@ export const authService = {
 
   isAdmin(): boolean {
     return this.getCurrentUser()?.role === 'Admin';
+  },
+
+  isOperatorOrAbove(): boolean {
+    const role = this.getCurrentUser()?.role;
+    return role === 'Admin' || role === 'Operator';
+  },
+
+  isViewer(): boolean {
+    return this.getCurrentUser()?.role === 'Viewer';
   },
 };
 

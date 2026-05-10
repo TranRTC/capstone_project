@@ -102,6 +102,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // POST: api/v1/alertrules
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPost]
         public async Task<ActionResult<ApiResponse<AlertRuleDto>>> CreateAlertRule([FromBody] CreateAlertRuleDto dto)
         {
@@ -136,6 +137,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // PUT: api/v1/alertrules/{id}
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPut("{id}")]
         public async Task<ActionResult<ApiResponse<AlertRuleDto>>> UpdateAlertRule(int id, [FromBody] UpdateAlertRuleDto dto)
         {
@@ -170,6 +172,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // DELETE: api/v1/alertrules/{id}
+        [Authorize(Roles = "Admin,Operator")]
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteAlertRule(int id)
         {

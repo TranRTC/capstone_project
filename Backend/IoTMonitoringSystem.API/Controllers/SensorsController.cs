@@ -77,6 +77,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // POST: api/v1/devices/{deviceId}/sensors
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPost("devices/{deviceId}/sensors")]
         public async Task<ActionResult<ApiResponse<SensorDto>>> CreateSensor(int deviceId, [FromBody] CreateSensorDto dto)
         {
@@ -111,6 +112,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // PUT: api/v1/sensors/{id}
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPut("{id}")]
         public async Task<ActionResult<ApiResponse<SensorDto>>> UpdateSensor(int id, [FromBody] UpdateSensorDto dto)
         {
@@ -145,6 +147,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // DELETE: api/v1/sensors/{id}
+        [Authorize(Roles = "Admin,Operator")]
         [HttpDelete("{id}")]
         public async Task<ActionResult> DeleteSensor(int id)
         {

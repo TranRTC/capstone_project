@@ -45,7 +45,6 @@ class ApiService {
       return config;
     });
 
-    // Redirect to login on 401
     this.api.interceptors.response.use(
       (response) => response,
       (error) => {
@@ -53,6 +52,14 @@ class ApiService {
           localStorage.removeItem('iot_jwt_token');
           localStorage.removeItem('iot_user');
           window.location.href = '/login';
+        }
+        if (error.response?.status === 403) {
+          // Replace the error with a clear permission message
+          const friendlyError = new Error(
+            'You do not have permission to perform this action. Required role: Operator or Admin.'
+          );
+          (friendlyError as any).isForbidden = true;
+          return Promise.reject(friendlyError);
         }
         return Promise.reject(error);
       }

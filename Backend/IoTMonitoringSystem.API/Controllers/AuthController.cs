@@ -69,8 +69,8 @@ namespace IoTMonitoringSystem.API.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
-                           ?? User.FindFirst("sub");
+            var userIdClaim = User.FindFirst("sub")
+                           ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
             if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out var userId))
                 return Unauthorized();
 
@@ -79,6 +79,21 @@ namespace IoTMonitoringSystem.API.Controllers
                 return BadRequest(new { message = "Current password is incorrect." });
 
             return Ok(new { message = "Password changed successfully." });
+        }
+
+        /// <summary>Change a user's role. Admin only.</summary>
+        [Authorize(Roles = "Admin")]
+        [HttpPatch("users/{userId}/role")]
+        public async Task<IActionResult> UpdateUserRole(int userId, [FromBody] UpdateUserRoleDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var result = await _authService.UpdateUserRoleAsync(userId, dto.Role);
+            if (result == null)
+                return BadRequest(new { message = "Invalid role or user not found." });
+
+            return Ok(result);
         }
 
         /// <summary>Deactivate a user. Admin only.</summary>

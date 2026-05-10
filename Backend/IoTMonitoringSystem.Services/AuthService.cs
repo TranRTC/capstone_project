@@ -95,6 +95,20 @@ namespace IoTMonitoringSystem.Services
             return true;
         }
 
+        public async Task<UserDto?> UpdateUserRoleAsync(int userId, string role)
+        {
+            var allowed = new[] { "Admin", "Operator", "Viewer" };
+            if (!allowed.Contains(role)) return null;
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) return null;
+
+            user.Role = role;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return MapToDto(user);
+        }
+
         private string GenerateJwtToken(User user)
         {
             var jwtKey = _configuration["Jwt:Key"]
@@ -109,7 +123,8 @@ namespace IoTMonitoringSystem.Services
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.UserId.ToString()),
                 new Claim(JwtRegisteredClaimNames.UniqueName, user.Username),
-                new Claim(ClaimTypes.Role, user.Role),
+                // Use short "role" claim type — matches RoleClaimType = "role" in TokenValidationParameters
+                new Claim("role", user.Role),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

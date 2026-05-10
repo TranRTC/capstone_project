@@ -56,4 +56,11 @@ namespace IoTMonitoringSystem.Core.DTOs
         [MinLength(8)]
         public string NewPassword { get; set; } = string.Empty;
     }
+
+    public class UpdateUserRoleDto
+    {
+        [Required]
+        [MaxLength(20)]
+        public string Role { get; set; } = string.Empty;
+    }
 }

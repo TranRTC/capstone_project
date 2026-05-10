@@ -50,6 +50,7 @@ namespace IoTMonitoringSystem.API.Controllers
             }
         }
 
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPut]
         public async Task<ActionResult<ApiResponse<List<DeviceConfigurationDto>>>> UpsertByDeviceId(
             int deviceId,

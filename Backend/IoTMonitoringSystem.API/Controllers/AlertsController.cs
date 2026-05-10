@@ -102,6 +102,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // PUT: api/v1/alerts/{id}/acknowledge
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPut("{id}/acknowledge")]
         public async Task<ActionResult<ApiResponse<AlertDto>>> AcknowledgeAlert(long id)
         {
@@ -136,6 +137,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // PUT: api/v1/alerts/{id}/resolve
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPut("{id}/resolve")]
         public async Task<ActionResult<ApiResponse<AlertDto>>> ResolveAlert(long id)
         {

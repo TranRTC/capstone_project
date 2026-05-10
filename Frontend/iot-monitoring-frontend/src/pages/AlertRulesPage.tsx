@@ -33,6 +33,8 @@ import {
 import { Add as AddIcon, Edit as EditIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
 import type { ChipProps } from '@mui/material/Chip';
 import { apiService } from '../services/api';
+import { authService } from '../services/authService';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { AlertRule, CreateAlertRule, DeviceList, Sensor } from '../types';
 
 const panelSx = {
@@ -150,6 +152,10 @@ const AlertRulesPage: React.FC = () => {
   const [form, setForm] = useState<RuleFormState>(emptyForm());
   const [formError, setFormError] = useState<string | null>(null);
   const [formSaving, setFormSaving] = useState(false);
+  const [confirmRule, setConfirmRule] = useState<AlertRule | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const canWrite = authService.isOperatorOrAbove();
 
   // Load devices on mount
   useEffect(() => {
@@ -276,13 +282,23 @@ const AlertRulesPage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (rule: AlertRule) => {
-    if (!window.confirm(`Delete rule "${rule.ruleName}"? This cannot be undone.`)) return;
+  const handleDelete = (rule: AlertRule) => {
+    setActionError(null);
+    setConfirmRule(rule);
+  };
+
+  const doDeleteRule = async () => {
+    if (!confirmRule) return;
+    setDeleteLoading(true);
     try {
-      await apiService.deleteAlertRule(rule.alertRuleId);
+      await apiService.deleteAlertRule(confirmRule.alertRuleId);
+      setConfirmRule(null);
       await loadRules(selectedDeviceId as number, selectedSensorId as number);
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete rule.');
+      setActionError(err?.message || 'Failed to delete rule.');
+      setConfirmRule(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -294,6 +310,22 @@ const AlertRulesPage: React.FC = () => {
       <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 2 }}>
         Alert Rules
       </Typography>
+
+      <ConfirmDialog
+        open={confirmRule != null}
+        title="Delete Alert Rule"
+        message={`Delete rule "${confirmRule?.ruleName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={doDeleteRule}
+        onCancel={() => setConfirmRule(null)}
+      />
+
+      {actionError && (
+        <MuiAlert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </MuiAlert>
+      )}
 
       {devicesError && (
         <MuiAlert severity="error" sx={{ mb: 3 }} action={<Button color="inherit" size="small" onClick={loadDevices}>Retry</Button>}>
@@ -373,14 +405,16 @@ const AlertRulesPage: React.FC = () => {
         )}
 
         <Box sx={{ mt: 2 }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={openCreate}
-            disabled={!canAddRule}
-          >
-            Add Rule
-          </Button>
+          {canWrite && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openCreate}
+              disabled={!canAddRule}
+            >
+              Add Rule
+            </Button>
+          )}
           {selectedDeviceId !== '' && selectedSensorId === '' && (
             <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
               Select a sensor to add rules.
@@ -451,12 +485,16 @@ const AlertRulesPage: React.FC = () => {
                     />
                   </TableCell>
                   <TableCell align="right">
-                    <IconButton size="small" onClick={() => openEdit(rule)} title="Edit">
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => handleDelete(rule)} title="Delete" color="error">
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {canWrite && (
+                      <IconButton size="small" onClick={() => openEdit(rule)} title="Edit">
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                    {canWrite && (
+                      <IconButton size="small" onClick={() => handleDelete(rule)} title="Delete" color="error">
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

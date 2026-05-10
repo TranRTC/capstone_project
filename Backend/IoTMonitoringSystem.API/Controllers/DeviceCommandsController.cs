@@ -18,6 +18,7 @@ namespace IoTMonitoringSystem.API.Controllers
         }
 
         // POST: api/v1/devices/{deviceId}/commands
+        [Authorize(Roles = "Admin,Operator")]
         [HttpPost]
         public async Task<ActionResult<ApiResponse<DeviceCommandDto>>> CreateCommand(
             int deviceId,

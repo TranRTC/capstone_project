@@ -82,7 +82,10 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = jwtIssuer,
         ValidAudience = jwtAudience,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        // Must match the claim type used when writing the token
+        RoleClaimType = "role",
+        NameClaimType = "unique_name"
     };
 
     // Support JWT in SignalR (token passed as query param)

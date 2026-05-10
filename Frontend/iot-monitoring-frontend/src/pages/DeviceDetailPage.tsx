@@ -37,8 +37,10 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { apiService } from '../services/api';
+import { authService } from '../services/authService';
 import DeviceTemperatureChart from '../components/charts/DeviceTemperatureChart';
 import SensorForm, { SensorFormValues } from '../components/sensor/SensorForm';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import {
   Device,
   DeviceCommand,
@@ -174,6 +176,11 @@ const DeviceDetailPage: React.FC = () => {
   });
   const [arFormError, setArFormError] = useState<string | null>(null);
   const [arFormSaving, setArFormSaving] = useState(false);
+  const [confirmActuator, setConfirmActuator] = useState<Actuator | null>(null);
+  const [confirmSensor, setConfirmSensor] = useState<Sensor | null>(null);
+  const [confirmAlertRule, setConfirmAlertRule] = useState<AlertRule | null>(null);
+  const [destructiveLoading, setDestructiveLoading] = useState(false);
+  const canWrite = authService.isOperatorOrAbove();
 
   const buildCapabilityModel = (configs: DeviceConfiguration[], deviceType?: string) => {
     const lowered = (deviceType ?? '').toLowerCase();
@@ -465,16 +472,23 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
-  const deleteActuator = async (actuator: Actuator) => {
-    if (!device) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(`Delete actuator "${actuator.name}"?`)) return;
+  const deleteActuator = (actuator: Actuator) => {
+    setConfirmActuator(actuator);
+  };
+
+  const doDeleteActuator = async () => {
+    if (!device || !confirmActuator) return;
+    setDestructiveLoading(true);
     try {
       setCommandError(null);
-      await apiService.deleteActuator(device.deviceId, actuator.actuatorId);
+      await apiService.deleteActuator(device.deviceId, confirmActuator.actuatorId);
+      setConfirmActuator(null);
       await loadDevice(device.deviceId);
     } catch (err: any) {
       setCommandError(err.message || 'Failed to delete actuator (commands may still reference it).');
+      setConfirmActuator(null);
+    } finally {
+      setDestructiveLoading(false);
     }
   };
 
@@ -506,19 +520,39 @@ const DeviceDetailPage: React.FC = () => {
     setSensorFormOpen(true);
   };
 
-  const deleteSensorRow = async (s: Sensor) => {
-    if (!device) return;
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(`Delete sensor "${s.sensorName}"? This cannot be undone.`)) return;
+  const deleteSensorRow = (s: Sensor) => {
+    setConfirmSensor(s);
+  };
+
+  const doDeleteSensor = async () => {
+    if (!device || !confirmSensor) return;
+    setDestructiveLoading(true);
     try {
       setCommandError(null);
-      await apiService.deleteSensor(s.sensorId);
-      if (sensorChartSensorId === s.sensorId) {
-        setSensorChartSensorId(null);
-      }
+      await apiService.deleteSensor(confirmSensor.sensorId);
+      if (sensorChartSensorId === confirmSensor.sensorId) setSensorChartSensorId(null);
+      setConfirmSensor(null);
       await loadDevice(device.deviceId);
     } catch (err: any) {
       setCommandError(err.message || 'Failed to delete sensor.');
+      setConfirmSensor(null);
+    } finally {
+      setDestructiveLoading(false);
+    }
+  };
+
+  const doDeleteAlertRule = async () => {
+    if (!device || !confirmAlertRule) return;
+    setDestructiveLoading(true);
+    try {
+      await apiService.deleteAlertRule(confirmAlertRule.alertRuleId);
+      setConfirmAlertRule(null);
+      void loadAlertRules(device.deviceId);
+    } catch (err: any) {
+      setCommandError(err?.message || 'Failed to delete rule.');
+      setConfirmAlertRule(null);
+    } finally {
+      setDestructiveLoading(false);
     }
   };
 
@@ -603,6 +637,34 @@ const DeviceDetailPage: React.FC = () => {
 
   return (
     <Box>
+      <ConfirmDialog
+        open={confirmActuator != null}
+        title="Delete Actuator"
+        message={`Delete actuator "${confirmActuator?.name}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={destructiveLoading}
+        onConfirm={doDeleteActuator}
+        onCancel={() => setConfirmActuator(null)}
+      />
+      <ConfirmDialog
+        open={confirmSensor != null}
+        title="Delete Sensor"
+        message={`Delete sensor "${confirmSensor?.sensorName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={destructiveLoading}
+        onConfirm={doDeleteSensor}
+        onCancel={() => setConfirmSensor(null)}
+      />
+      <ConfirmDialog
+        open={confirmAlertRule != null}
+        title="Delete Alert Rule"
+        message={`Delete rule "${confirmAlertRule?.ruleName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        loading={destructiveLoading}
+        onConfirm={doDeleteAlertRule}
+        onCancel={() => setConfirmAlertRule(null)}
+      />
+
       <Breadcrumbs sx={{ mb: 2 }}>
         <Link component={RouterLink} to="/devices" color="inherit" underline="hover">
           Devices
@@ -698,9 +760,11 @@ const DeviceDetailPage: React.FC = () => {
                 <Button component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} variant="outlined" size="small">
                   Manage sensors
                 </Button>
-                <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openSensorForm('add')}>
-                  Add sensor
-                </Button>
+                {canWrite && (
+                  <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openSensorForm('add')}>
+                    Add sensor
+                  </Button>
+                )}
               </Stack>
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -752,12 +816,16 @@ const DeviceDetailPage: React.FC = () => {
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center" flexWrap="wrap" useFlexGap>
-                            <IconButton size="small" aria-label="edit sensor" onClick={() => openSensorForm('edit', s)}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" aria-label="delete sensor" onClick={() => deleteSensorRow(s)}>
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
+                            {canWrite && (
+                              <IconButton size="small" aria-label="edit sensor" onClick={() => openSensorForm('edit', s)}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {canWrite && (
+                              <IconButton size="small" aria-label="delete sensor" onClick={() => deleteSensorRow(s)}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            )}
                             <Button
                               variant="outlined"
                               size="small"
@@ -784,9 +852,11 @@ const DeviceDetailPage: React.FC = () => {
                 <Button component={RouterLink} to={`/actuators?deviceId=${device.deviceId}`} variant="outlined" size="small">
                   Manage actuators
                 </Button>
-                <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openActuatorDialog('add')}>
-                  Add actuator
-                </Button>
+                {canWrite && (
+                  <Button startIcon={<AddIcon />} variant="contained" size="small" onClick={() => openActuatorDialog('add')}>
+                    Add actuator
+                  </Button>
+                )}
               </Stack>
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -889,16 +959,20 @@ const DeviceDetailPage: React.FC = () => {
                         </TableCell>
                         <TableCell align="right">
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center" flexWrap="wrap" useFlexGap>
-                            <IconButton
-                              size="small"
-                              aria-label="edit actuator"
-                              onClick={() => openActuatorDialog('edit', a)}
-                            >
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" aria-label="delete actuator" onClick={() => deleteActuator(a)}>
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
+                            {canWrite && (
+                              <IconButton
+                                size="small"
+                                aria-label="edit actuator"
+                                onClick={() => openActuatorDialog('edit', a)}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {canWrite && (
+                              <IconButton size="small" aria-label="delete actuator" onClick={() => deleteActuator(a)}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            )}
                             <Button
                               variant="contained"
                               size="small"
@@ -934,19 +1008,21 @@ const DeviceDetailPage: React.FC = () => {
                 >
                   Manage all rules
                 </Button>
-                <Button
-                  startIcon={<AddIcon />}
-                  variant="contained"
-                  size="small"
-                  onClick={() => {
-                    setArEditingRule(null);
-                    setArForm({ ruleName: '', ruleType: 'threshold', condition: '', severity: 'Medium', isEnabled: true, thresholdValue: '', comparisonOperator: '>', minValue: '', maxValue: '', sensorId: '' });
-                    setArFormError(null);
-                    setArDialogOpen(true);
-                  }}
-                >
-                  Add rule
-                </Button>
+                {canWrite && (
+                  <Button
+                    startIcon={<AddIcon />}
+                    variant="contained"
+                    size="small"
+                    onClick={() => {
+                      setArEditingRule(null);
+                      setArForm({ ruleName: '', ruleType: 'threshold', condition: '', severity: 'Medium', isEnabled: true, thresholdValue: '', comparisonOperator: '>', minValue: '', maxValue: '', sensorId: '' });
+                      setArFormError(null);
+                      setArDialogOpen(true);
+                    }}
+                  >
+                    Add rule
+                  </Button>
+                )}
               </Stack>
             </Box>
             {alertRulesLoading ? (
@@ -1001,36 +1077,32 @@ const DeviceDetailPage: React.FC = () => {
                             <Chip label={rule.isEnabled ? 'Enabled' : 'Disabled'} color={rule.isEnabled ? 'success' : 'default'} size="small" variant={rule.isEnabled ? 'filled' : 'outlined'} />
                           </TableCell>
                           <TableCell align="right">
-                            <IconButton size="small" title="Edit" onClick={() => {
-                              setArEditingRule(rule);
-                              setArForm({
-                                ruleName: rule.ruleName,
-                                ruleType: rule.ruleType.toLowerCase(),
-                                condition: rule.condition,
-                                severity: rule.severity,
-                                isEnabled: rule.isEnabled,
-                                thresholdValue: rule.thresholdValue != null ? String(rule.thresholdValue) : '',
-                                comparisonOperator: rule.comparisonOperator ?? '>',
-                                minValue: rule.minValue != null ? String(rule.minValue) : '',
-                                maxValue: rule.maxValue != null ? String(rule.maxValue) : '',
-                                sensorId: rule.sensorId ?? '',
-                              });
-                              setArFormError(null);
-                              setArDialogOpen(true);
-                            }}>
-                              <EditIcon fontSize="small" />
-                            </IconButton>
-                            <IconButton size="small" title="Delete" color="error" onClick={async () => {
-                              if (!window.confirm(`Delete rule "${rule.ruleName}"?`)) return;
-                              try {
-                                await apiService.deleteAlertRule(rule.alertRuleId);
-                                void loadAlertRules(device.deviceId);
-                              } catch (err: any) {
-                                alert(err?.message || 'Failed to delete rule.');
-                              }
-                            }}>
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
+                            {canWrite && (
+                              <IconButton size="small" title="Edit" onClick={() => {
+                                setArEditingRule(rule);
+                                setArForm({
+                                  ruleName: rule.ruleName,
+                                  ruleType: rule.ruleType.toLowerCase(),
+                                  condition: rule.condition,
+                                  severity: rule.severity,
+                                  isEnabled: rule.isEnabled,
+                                  thresholdValue: rule.thresholdValue != null ? String(rule.thresholdValue) : '',
+                                  comparisonOperator: rule.comparisonOperator ?? '>',
+                                  minValue: rule.minValue != null ? String(rule.minValue) : '',
+                                  maxValue: rule.maxValue != null ? String(rule.maxValue) : '',
+                                  sensorId: rule.sensorId ?? '',
+                                });
+                                setArFormError(null);
+                                setArDialogOpen(true);
+                              }}>
+                                <EditIcon fontSize="small" />
+                              </IconButton>
+                            )}
+                            {canWrite && (
+                              <IconButton size="small" title="Delete" color="error" onClick={() => setConfirmAlertRule(rule)}>
+                                <DeleteOutlineIcon fontSize="small" />
+                              </IconButton>
+                            )}
                           </TableCell>
                         </TableRow>
                       );

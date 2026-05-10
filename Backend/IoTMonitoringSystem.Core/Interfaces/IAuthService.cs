@@ -9,5 +9,6 @@ namespace IoTMonitoringSystem.Core.Interfaces
         Task<IEnumerable<UserDto>> GetAllUsersAsync();
         Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto dto);
         Task<bool> DeactivateUserAsync(int userId);
+        Task<UserDto?> UpdateUserRoleAsync(int userId, string role);
     }
 }

@@ -5,9 +5,14 @@ import authService from '../../services/authService';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireOperator?: boolean;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin = false }) => {
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
+  requireAdmin = false,
+  requireOperator = false,
+}) => {
   const location = useLocation();
 
   if (!authService.isAuthenticated()) {
@@ -15,6 +20,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin 
   }
 
   if (requireAdmin && !authService.isAdmin()) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireOperator && !authService.isOperatorOrAbove()) {
     return <Navigate to="/dashboard" replace />;
   }
 

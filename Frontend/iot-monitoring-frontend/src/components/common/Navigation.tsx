@@ -11,6 +11,7 @@ import {
   History as HistoryIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
+  ManageAccounts as ManageAccountsIcon,
 } from '@mui/icons-material';
 import authService from '../../services/authService';
 
@@ -19,15 +20,18 @@ const Navigation: React.FC = () => {
   const navigate = useNavigate();
   const currentUser = authService.getCurrentUser();
 
+  const isAdmin = currentUser?.role === 'Admin';
+
   const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-    { path: '/devices', label: 'Devices', icon: <DevicesIcon /> },
-    { path: '/sensors', label: 'Sensors', icon: <SensorsIcon /> },
-    { path: '/actuators', label: 'Actuators', icon: <TuneIcon /> },
-    { path: '/alert-rules', label: 'Alert Rules', icon: <RuleIcon /> },
-    { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon /> },
-    { path: '/command-history', label: 'Commands', icon: <HistoryIcon /> },
-  ];
+    { path: '/dashboard', label: 'Dashboard', icon: <DashboardIcon />, adminOnly: false },
+    { path: '/devices', label: 'Devices', icon: <DevicesIcon />, adminOnly: false },
+    { path: '/sensors', label: 'Sensors', icon: <SensorsIcon />, adminOnly: false },
+    { path: '/actuators', label: 'Actuators', icon: <TuneIcon />, adminOnly: false },
+    { path: '/alert-rules', label: 'Alert Rules', icon: <RuleIcon />, adminOnly: false },
+    { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon />, adminOnly: false },
+    { path: '/command-history', label: 'Commands', icon: <HistoryIcon />, adminOnly: false },
+    { path: '/users', label: 'Users', icon: <ManageAccountsIcon />, adminOnly: true },
+  ].filter((item) => !item.adminOnly || isAdmin);
 
   const handleLogout = () => {
     authService.logout();

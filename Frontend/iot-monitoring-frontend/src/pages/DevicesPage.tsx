@@ -18,6 +18,8 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Add as AddIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { authService } from '../services/authService';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import DeviceForm from '../components/device/DeviceForm';
 import {
   Device,
@@ -94,6 +96,10 @@ const DevicesPage: React.FC = () => {
   const [editingDevice, setEditingDevice] = useState<DeviceList | null>(null);
   const [formInitialData, setFormInitialData] = useState<CreateDevice | undefined>(undefined);
   const [formInitialCapabilities, setFormInitialCapabilities] = useState<DeviceCapabilitiesInput | undefined>(undefined);
+  const [confirmDeviceId, setConfirmDeviceId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const canWrite = authService.isOperatorOrAbove();
 
   const capabilitiesToConfigurations = (capabilities: DeviceCapabilitiesInput): DeviceConfigurationInput[] => {
     const configs: DeviceConfigurationInput[] = [
@@ -186,19 +192,28 @@ const DevicesPage: React.FC = () => {
       setFormOpen(true);
     } catch (error: any) {
       console.error('Error loading device:', error);
-      alert(error.message || 'Failed to load device for editing');
+      setActionError(error.message || 'Failed to load device for editing');
     }
   };
 
-  const handleDeleteDevice = async (id: number) => {
-    if (window.confirm('Are you sure you want to delete this device?')) {
-      try {
-        await apiService.deleteDevice(id);
-        await loadDevices();
-      } catch (error) {
-        console.error('Error deleting device:', error);
-        alert('Failed to delete device');
-      }
+  const handleDeleteDevice = (id: number) => {
+    setActionError(null);
+    setConfirmDeviceId(id);
+  };
+
+  const doDeleteDevice = async () => {
+    if (confirmDeviceId == null) return;
+    setDeleteLoading(true);
+    try {
+      await apiService.deleteDevice(confirmDeviceId);
+      setConfirmDeviceId(null);
+      await loadDevices();
+    } catch (error: any) {
+      console.error('Error deleting device:', error);
+      setActionError(error.message || 'Failed to delete device');
+      setConfirmDeviceId(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -224,18 +239,30 @@ const DevicesPage: React.FC = () => {
         <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
           Devices
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setEditingDevice(null);
-            setFormInitialData(undefined);
-            setFormOpen(true);
-          }}
-        >
-          Add Device
-        </Button>
+        {canWrite && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              setEditingDevice(null);
+              setFormInitialData(undefined);
+              setFormOpen(true);
+            }}
+          >
+            Add Device
+          </Button>
+        )}
       </Box>
+
+      <ConfirmDialog
+        open={confirmDeviceId != null}
+        title="Delete Device"
+        message="Are you sure you want to delete this device? This cannot be undone."
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={doDeleteDevice}
+        onCancel={() => setConfirmDeviceId(null)}
+      />
 
       <DeviceForm
         key={editingDevice ? `edit-${editingDevice.deviceId}` : 'create'}
@@ -246,6 +273,12 @@ const DevicesPage: React.FC = () => {
         initialCapabilities={formInitialCapabilities}
         title={editingDevice ? 'Edit Device' : 'Create Device'}
       />
+
+      {actionError && (
+        <MuiAlert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </MuiAlert>
+      )}
 
       {loadError && (
         <MuiAlert
@@ -339,24 +372,28 @@ const DevicesPage: React.FC = () => {
                           >
                             View
                           </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="success"
-                            onClick={() => handleEditDevice(device)}
-                            sx={tableActionGhostSageSx}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            onClick={() => handleDeleteDevice(device.deviceId)}
-                            sx={tableActionGhostDangerSx}
-                          >
-                            Delete
-                          </Button>
+                          {canWrite && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="success"
+                              onClick={() => handleEditDevice(device)}
+                              sx={tableActionGhostSageSx}
+                            >
+                              Edit
+                            </Button>
+                          )}
+                          {canWrite && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              onClick={() => handleDeleteDevice(device.deviceId)}
+                              sx={tableActionGhostDangerSx}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </Box>
                       </TableCell>
                     </TableRow>

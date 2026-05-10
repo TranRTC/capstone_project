@@ -20,7 +20,9 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Add as AddIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { authService } from '../services/authService';
 import ActuatorForm, { ActuatorFormValues } from '../components/actuator/ActuatorForm';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { Actuator, CreateActuator, DeviceList, Sensor } from '../types';
 
 const panelSx = {
@@ -99,6 +101,10 @@ const ActuatorsPage: React.FC = () => {
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingActuator, setEditingActuator] = useState<Actuator | null>(null);
+  const [confirmActuatorId, setConfirmActuatorId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const canWrite = authService.isOperatorOrAbove();
 
   useEffect(() => {
     void loadDevices();
@@ -197,15 +203,24 @@ const ActuatorsPage: React.FC = () => {
     setFormOpen(true);
   };
 
-  const handleDeleteActuator = async (actuatorId: number) => {
-    if (!window.confirm('Delete this actuator? This cannot be undone.')) return;
+  const handleDeleteActuator = (actuatorId: number) => {
+    setActionError(null);
+    setConfirmActuatorId(actuatorId);
+  };
+
+  const doDeleteActuator = async () => {
+    if (confirmActuatorId == null || selectedDeviceId === '') return;
+    setDeleteLoading(true);
     try {
-      if (selectedDeviceId === '') return;
-      await apiService.deleteActuator(selectedDeviceId, actuatorId);
+      await apiService.deleteActuator(selectedDeviceId, confirmActuatorId);
+      setConfirmActuatorId(null);
       await loadActuatorsAndSensors(selectedDeviceId);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting actuator:', err);
-      alert('Failed to delete actuator');
+      setActionError(err?.message || 'Failed to delete actuator');
+      setConfirmActuatorId(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -221,6 +236,22 @@ const ActuatorsPage: React.FC = () => {
       <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 2 }}>
         Actuators
       </Typography>
+
+      <ConfirmDialog
+        open={confirmActuatorId != null}
+        title="Delete Actuator"
+        message="Delete this actuator? This cannot be undone."
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={doDeleteActuator}
+        onCancel={() => setConfirmActuatorId(null)}
+      />
+
+      {actionError && (
+        <MuiAlert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </MuiAlert>
+      )}
 
       <ActuatorForm
         key={editingActuator ? `edit-${editingActuator.actuatorId}` : 'create'}
@@ -286,16 +317,18 @@ const ActuatorsPage: React.FC = () => {
           </FormControl>
         )}
 
-        <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={openCreateForm}
-            disabled={!canManageActuators || actuatorsLoading}
-          >
-            Add Actuator
-          </Button>
-        </Box>
+        {canWrite && (
+          <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openCreateForm}
+              disabled={!canManageActuators || actuatorsLoading}
+            >
+              Add Actuator
+            </Button>
+          </Box>
+        )}
       </Paper>
 
       {actuatorsError && selectedDeviceId !== '' && (
@@ -391,24 +424,28 @@ const ActuatorsPage: React.FC = () => {
                       gap: 0.5,
                     }}
                   >
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="success"
-                      onClick={() => handleEditActuator(actuator)}
-                      sx={cardActionGhostSageSx}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      onClick={() => handleDeleteActuator(actuator.actuatorId)}
-                      sx={cardActionGhostDangerSx}
-                    >
-                      Delete
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="success"
+                        onClick={() => handleEditActuator(actuator)}
+                        sx={cardActionGhostSageSx}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={() => handleDeleteActuator(actuator.actuatorId)}
+                        sx={cardActionGhostDangerSx}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </Box>
                 </CardContent>
               </Card>

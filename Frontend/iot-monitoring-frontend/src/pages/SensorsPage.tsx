@@ -20,7 +20,9 @@ import {
 import { alpha } from '@mui/material/styles';
 import { Add as AddIcon } from '@mui/icons-material';
 import { apiService } from '../services/api';
+import { authService } from '../services/authService';
 import SensorForm, { SensorFormValues } from '../components/sensor/SensorForm';
+import ConfirmDialog from '../components/common/ConfirmDialog';
 import { DeviceList, Sensor } from '../types';
 
 const panelSx = {
@@ -102,6 +104,10 @@ const SensorsPage: React.FC = () => {
   const [sensorsError, setSensorsError] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingSensor, setEditingSensor] = useState<Sensor | null>(null);
+  const [confirmSensorId, setConfirmSensorId] = useState<number | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const canWrite = authService.isOperatorOrAbove();
 
   useEffect(() => {
     loadDevices();
@@ -194,16 +200,24 @@ const SensorsPage: React.FC = () => {
     setFormOpen(true);
   };
 
-  const handleDeleteSensor = async (sensorId: number) => {
-    if (!window.confirm('Delete this sensor? This cannot be undone.')) return;
+  const handleDeleteSensor = (sensorId: number) => {
+    setActionError(null);
+    setConfirmSensorId(sensorId);
+  };
+
+  const doDeleteSensor = async () => {
+    if (confirmSensorId == null) return;
+    setDeleteLoading(true);
     try {
-      await apiService.deleteSensor(sensorId);
-      if (selectedDeviceId !== '') {
-        await loadSensors(selectedDeviceId);
-      }
-    } catch (err) {
+      await apiService.deleteSensor(confirmSensorId);
+      setConfirmSensorId(null);
+      if (selectedDeviceId !== '') await loadSensors(selectedDeviceId);
+    } catch (err: any) {
       console.error('Error deleting sensor:', err);
-      alert('Failed to delete sensor');
+      setActionError(err?.message || 'Failed to delete sensor');
+      setConfirmSensorId(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -219,6 +233,22 @@ const SensorsPage: React.FC = () => {
       <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 2 }}>
         Sensors
       </Typography>
+
+      <ConfirmDialog
+        open={confirmSensorId != null}
+        title="Delete Sensor"
+        message="Delete this sensor? This cannot be undone."
+        confirmLabel="Delete"
+        loading={deleteLoading}
+        onConfirm={doDeleteSensor}
+        onCancel={() => setConfirmSensorId(null)}
+      />
+
+      {actionError && (
+        <MuiAlert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {actionError}
+        </MuiAlert>
+      )}
 
       <SensorForm
         key={editingSensor ? `edit-${editingSensor.sensorId}` : 'create'}
@@ -283,16 +313,18 @@ const SensorsPage: React.FC = () => {
           </FormControl>
         )}
 
-        <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={openCreateForm}
-            disabled={!canManageSensors || sensorsLoading}
-          >
-            Add Sensor
-          </Button>
-        </Box>
+        {canWrite && (
+          <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openCreateForm}
+              disabled={!canManageSensors || sensorsLoading}
+            >
+              Add Sensor
+            </Button>
+          </Box>
+        )}
       </Paper>
 
       {sensorsError && selectedDeviceId !== '' && (
@@ -388,24 +420,28 @@ const SensorsPage: React.FC = () => {
                       gap: 0.5,
                     }}
                   >
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="success"
-                      onClick={() => handleEditSensor(sensor)}
-                      sx={cardActionGhostSageSx}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      onClick={() => handleDeleteSensor(sensor.sensorId)}
-                      sx={cardActionGhostDangerSx}
-                    >
-                      Delete
-                    </Button>
+                    {canWrite && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="success"
+                        onClick={() => handleEditSensor(sensor)}
+                        sx={cardActionGhostSageSx}
+                      >
+                        Edit
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        onClick={() => handleDeleteSensor(sensor.sensorId)}
+                        sx={cardActionGhostDangerSx}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </Box>
                 </CardContent>
               </Card>

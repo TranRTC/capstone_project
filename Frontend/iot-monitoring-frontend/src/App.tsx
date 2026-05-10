@@ -14,6 +14,7 @@ import ActuatorsPage from './pages/ActuatorsPage';
 import AlertsPage from './pages/AlertsPage';
 import AlertRulesPage from './pages/AlertRulesPage';
 import CommandHistoryPage from './pages/CommandHistoryPage';
+import UserManagementPage from './pages/UserManagementPage';
 import { appTheme } from './theme';
 
 function App() {
@@ -48,6 +49,11 @@ function App() {
                       <Route path="/alert-rules" element={<AlertRulesPage />} />
                       <Route path="/alerts" element={<AlertsPage />} />
                       <Route path="/command-history" element={<CommandHistoryPage />} />
+                      <Route path="/users" element={
+                        <ProtectedRoute requireAdmin>
+                          <UserManagementPage />
+                        </ProtectedRoute>
+                      } />
                     </Routes>
                   </Container>
                 </Box>
