@@ -74,6 +74,10 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
+    // .NET 8 JwtBearer defaults MapInboundClaims=true, which maps JWT "role" to ClaimTypes.Role URI.
+    // That breaks [Authorize(Roles=...)] when RoleClaimType is the short name "role" (matches our token).
+    options.MapInboundClaims = false;
+
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
