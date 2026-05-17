@@ -1,0 +1,28 @@
+%% Frontend Data Flow — REST vs SignalR
+flowchart LR
+    subgraph FE["React Frontend"]
+        PAGE["Pages<br/>Dashboard · DeviceDetail · Alerts"]
+        API["api.ts"]
+        SR["signalRService.ts"]
+    end
+
+    subgraph BE["Backend"]
+        REST["REST Controllers"]
+        HUB["MonitoringHub"]
+        SVC["Services + EF Core"]
+        DB[(SQL Server)]
+        MQTT["MqttService"]
+    end
+
+    PAGE -->|"load history, CRUD"| API
+    API <-->|"HTTP + JWT"| REST
+    REST <--> SVC
+    SVC <--> DB
+
+    PAGE -->|"subscribe live"| SR
+    SR <-->|"WebSocket"| HUB
+
+    MQTT --> SVC
+    MQTT --> HUB
+    HUB -->|"SensorReadingReceived<br/>NewAlert"| SR
+    SR --> PAGE

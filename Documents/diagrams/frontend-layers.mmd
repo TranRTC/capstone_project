@@ -1,0 +1,29 @@
+%% Frontend Layered Architecture
+flowchart TB
+    subgraph L1["Presentation Layer"]
+        L1A["Pages + React Router"]
+        L1B["MUI Theme · Layout · Navigation"]
+    end
+
+    subgraph L2["UI Components Layer"]
+        L2A["Charts — Recharts"]
+        L2B["Forms & Dialogs"]
+        L2C["Tables · Chips · Status"]
+    end
+
+    subgraph L3["Client Services Layer"]
+        L3A["api.ts — REST"]
+        L3B["authService.ts — JWT"]
+        L3C["signalRService.ts — live updates"]
+    end
+
+    subgraph L4["Integration"]
+        L4A["/api/v1"]
+        L4B["/monitoringhub"]
+    end
+
+    L1 --> L2
+    L2 --> L3
+    L3A --> L4A
+    L3B --> L4A
+    L3C --> L4B
