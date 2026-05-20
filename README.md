@@ -1,43 +1,39 @@
 # IoT Device Real-Time Monitoring System
 
-A comprehensive web-based IoT monitoring solution with real-time data streaming, alerting, and data visualization.
+A web-based IoT monitoring solution with real-time data streaming, alerting, and visualization.
 
-## 📁 Project Structure
+## Project structure
 
 ```
 capstone_project/
 ├── Backend/              # ASP.NET Core Web API
-│   ├── IoTMonitoringSystem.API/
-│   ├── IoTMonitoringSystem.Core/
-│   ├── IoTMonitoringSystem.Infrastructure/
-│   ├── IoTMonitoringSystem.Services/
-│   └── IoTMonitoringSystem.slnx
-│
-├── Frontend/             # React TypeScript Application
-│   └── iot-monitoring-frontend/
-│
-└── Documents/            # Project Documentation
-    ├── context/          # Design documents (001-010)
-    ├── *.md              # Guides and instructions
-    └── *.ps1             # Scripts
+├── Frontend/             # React TypeScript SPA
+├── Documents/            # All project documentation (see below)
+│   ├── 001_Overview.md … 010_UserManual.md
+│   ├── testing/          # Manual checklist, automated results, API test script
+│   └── Presentation/     # Capstone slides and tables
+└── temperature-sensor-simulator.py   # MQTT test simulator (optional)
 ```
 
-## 🚀 Quick Start
+## Quick start
 
-### Backend Setup
+### Backend
 
 ```powershell
 cd Backend
-dotnet restore
-dotnet ef database update --project IoTMonitoringSystem.Infrastructure/IoTMonitoringSystem.Infrastructure.csproj
+$env:ASPNETCORE_ENVIRONMENT = "Development"
 dotnet run --project IoTMonitoringSystem.API/IoTMonitoringSystem.API.csproj
 ```
 
-Backend runs on:
-- HTTP: http://localhost:5000
-- HTTPS: https://localhost:5001
+| Service | URL |
+|---------|-----|
+| API | http://localhost:5000 |
+| Swagger | http://localhost:5000/swagger |
+| SignalR | http://localhost:5000/monitoringhub |
 
-### Frontend Setup
+Default login (development): `admin` / `Admin@123`
+
+### Frontend
 
 ```powershell
 cd Frontend/iot-monitoring-frontend
@@ -45,37 +41,28 @@ npm install --legacy-peer-deps
 npm start
 ```
 
-Frontend runs on: http://localhost:3000
+Web app: http://localhost:3000
 
-## 📚 Documentation
+## Documentation
 
-All documentation is in the `Documents/` folder:
-- Design documents (001-010)
-- API testing guides
-- Installation instructions
-- Troubleshooting guides
+**Start here:** [Documents/README.md](Documents/README.md)
 
-## 🛠️ Technology Stack
+| Location | Contents |
+|----------|----------|
+| [Documents/](Documents/) | Formal specs `001`–`010` |
+| [Documents/testing/](Documents/testing/) | Test plan link, manual checklist, automated results, `Run-ApiTests.ps1` |
+| [Documents/Presentation/](Documents/Presentation/) | PowerPoint and Excel for capstone slides |
 
-- **Backend:** ASP.NET Core Web API, Entity Framework Core, SignalR
-- **Frontend:** React, TypeScript, Material-UI, SignalR Client
-- **Database:** SQL Server (LocalDB)
-- **Real-Time:** SignalR WebSockets
+## Technology stack
 
-## 📋 Features
+- **Backend:** ASP.NET Core 8, EF Core, SignalR, MQTT
+- **Frontend:** React, TypeScript, Material-UI
+- **Database:** SQL Server (LocalDB or full instance)
 
-- ✅ Device Management (CRUD)
-- ✅ Sensor Management
-- ✅ Real-Time Sensor Data Streaming
-- ✅ Alert System with Rule Evaluation
-- ✅ Data Visualization
-- ✅ RESTful API
-- ✅ SignalR Real-Time Updates
+## Features
 
-## 📖 Getting Started
-
-See `Documents/` folder for detailed guides:
-- Installation instructions
-- API testing guides
-- Deployment guides
-- User manuals
+- Device, sensor, and actuator management
+- Real-time readings via SignalR
+- Alert rules and notifications
+- MQTT ingest and device commands
+- Role-based users (Admin, Operator, Viewer)
