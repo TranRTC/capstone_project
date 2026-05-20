@@ -53,6 +53,8 @@ namespace IoTMonitoringSystem.Services
                 Unit = dto.Unit,
                 MinValue = dto.MinValue,
                 MaxValue = dto.MaxValue,
+                SignalKind = dto.SignalKind,
+                ChartStyle = dto.SignalKind == SensorSignalKind.Discrete ? null : dto.ChartStyle,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -82,6 +84,14 @@ namespace IoTMonitoringSystem.Services
                 sensor.MaxValue = dto.MaxValue;
             if (dto.IsActive.HasValue)
                 sensor.IsActive = dto.IsActive.Value;
+            if (dto.SignalKind.HasValue)
+            {
+                sensor.SignalKind = dto.SignalKind.Value;
+                if (sensor.SignalKind == SensorSignalKind.Discrete)
+                    sensor.ChartStyle = null;
+            }
+            if (dto.ChartStyle.HasValue && sensor.SignalKind == SensorSignalKind.Analog)
+                sensor.ChartStyle = dto.ChartStyle;
 
             sensor.UpdatedAt = DateTime.UtcNow;
 
@@ -113,6 +123,8 @@ namespace IoTMonitoringSystem.Services
                 Unit = sensor.Unit,
                 MinValue = sensor.MinValue,
                 MaxValue = sensor.MaxValue,
+                SignalKind = sensor.SignalKind,
+                ChartStyle = sensor.ChartStyle,
                 IsActive = sensor.IsActive,
                 CreatedAt = sensor.CreatedAt,
                 UpdatedAt = sensor.UpdatedAt

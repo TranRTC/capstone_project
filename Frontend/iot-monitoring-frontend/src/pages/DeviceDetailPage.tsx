@@ -91,6 +91,7 @@ const tableAlignSx = {
 };
 
 function sensorToFormValues(s: Sensor): SensorFormValues {
+  const kind = s.signalKind ?? 'analog';
   return {
     sensorName: s.sensorName,
     sensorType: s.sensorType,
@@ -98,11 +99,14 @@ function sensorToFormValues(s: Sensor): SensorFormValues {
     edgeDeviceId: s.edgeDeviceId ?? '',
     minValue: s.minValue ?? undefined,
     maxValue: s.maxValue ?? undefined,
+    signalKind: kind,
+    chartStyle: kind === 'discrete' ? undefined : (s.chartStyle ?? 'line'),
     isActive: s.isActive,
   };
 }
 
 function toSensorCreatePayload(v: SensorFormValues): CreateSensor {
+  const isDiscrete = v.signalKind === 'discrete';
   return {
     sensorName: v.sensorName.trim(),
     sensorType: v.sensorType.trim(),
@@ -110,6 +114,8 @@ function toSensorCreatePayload(v: SensorFormValues): CreateSensor {
     edgeDeviceId: v.edgeDeviceId?.trim() || undefined,
     minValue: v.minValue,
     maxValue: v.maxValue,
+    signalKind: v.signalKind ?? 'analog',
+    chartStyle: isDiscrete ? null : (v.chartStyle ?? 'line'),
   };
 }
 
@@ -800,6 +806,15 @@ const DeviceDetailPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">{s.sensorType}</Typography>
+                          {(s.signalKind ?? 'analog') === 'discrete' ? (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Discrete · LED indicator
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Analog · {(s.chartStyle ?? 'line') === 'gauge' ? 'Bar gauge' : 'Line chart'}
+                            </Typography>
+                          )}
                           {s.unit ? (
                             <Typography variant="caption" color="text.secondary" display="block">{s.unit}</Typography>
                           ) : null}
@@ -1335,6 +1350,7 @@ const DeviceDetailPage: React.FC = () => {
               showPaper={false}
               windowMode="time"
               timeWindowMinutes={5}
+              hideDiscreteSensorHeading
             />
           )}
         </DialogContent>

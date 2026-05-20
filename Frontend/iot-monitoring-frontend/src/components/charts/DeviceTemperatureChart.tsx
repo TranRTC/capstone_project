@@ -18,6 +18,8 @@ import { ZoomIn, ZoomOut, RestartAlt } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import { signalRService } from '../../services/signalRService';
 import RealTimeChart from './RealTimeChart';
+import SensorAnalogGauge from './SensorAnalogGauge';
+import DiscreteSensorIndicator from './DiscreteSensorIndicator';
 import { Sensor, SensorReading } from '../../types';
 import * as signalR from '@microsoft/signalr';
 
@@ -32,6 +34,8 @@ interface DeviceTemperatureChartProps {
   windowMode?: 'time' | 'points'; // 'time' = SCADA style (time-based), 'points' = data points based
   timeWindowMinutes?: number; // Time window in minutes (used when windowMode='time')
   maxDataPoints?: number; // Max data points (used when windowMode='points')
+  /** Omit duplicate sensor title on discrete indicator when parent already titles the view (e.g. dialog). */
+  hideDiscreteSensorHeading?: boolean;
 }
 
 interface ChartDataPoint {
@@ -50,6 +54,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   windowMode: initialWindowMode = 'points', // Default to points mode for backward compatibility
   timeWindowMinutes: initialTimeWindowMinutes = 5, // Default 5 minutes for time mode
   maxDataPoints = 50, // Default 50 points for points mode
+  hideDiscreteSensorHeading = false,
 }) => {
   const theme = useTheme();
   const [temperatureSensor, setTemperatureSensor] = useState<Sensor | null>(null);
@@ -266,6 +271,28 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     };
   }, [temperatureSensor, deviceId, trendRange, windowMode, timeWindowMinutes, maxDataPoints]);
 
+  const signalKindNormalized = temperatureSensor?.signalKind ?? 'analog';
+  const isDiscreteSensor = signalKindNormalized === 'discrete';
+  const useAnalogGauge =
+    temperatureSensor != null &&
+    !isDiscreteSensor &&
+    (temperatureSensor.chartStyle ?? 'line') === 'gauge';
+  const gaugeDisplayValue =
+    currentValue ??
+    (chartData.length > 0 ? chartData[chartData.length - 1].value : null);
+  const gaugeMin = temperatureSensor?.minValue ?? 0;
+  const gaugeMax = temperatureSensor?.maxValue ?? 100;
+
+  const isAnalogLineVisualization =
+    Boolean(temperatureSensor) && !isDiscreteSensor && !useAnalogGauge;
+  const chromeReady =
+    temperatureSensor != null && !loading && !error;
+  /** Live/10m/24h strip + custom time — analog only (line + gauge), not discrete. */
+  const showAnalogHistoryChrome = chromeReady && !isDiscreteSensor;
+  /** 2s–10m presets + slider: only for analog line charts in time mode (not discrete; not gauge-only). */
+  const showLiveLineWindowTrim =
+    chromeReady && isAnalogLineVisualization && windowMode === 'time';
+
   const content = (
     <>
       {showPaper && (
@@ -273,87 +300,91 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
           {deviceName} — {temperatureSensor?.sensorName ?? 'Sensor'}
         </Typography>
       )}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1, flexWrap: 'wrap' }}>
-        <ButtonGroup size="small" variant="outlined">
-          <Button
-            onClick={() => {
-              setTrendRange('live');
-              setCustomWindow(null);
-            }}
-            variant={trendRange === 'live' ? 'contained' : 'outlined'}
-          >
-            Live
-          </Button>
-          <Button
-            onClick={() => setTrendRange('10m')}
-            variant={trendRange === '10m' ? 'contained' : 'outlined'}
-          >
-            10m
-          </Button>
-          <Button
-            onClick={() => setTrendRange('1h')}
-            variant={trendRange === '1h' ? 'contained' : 'outlined'}
-          >
-            1h
-          </Button>
-          <Button
-            onClick={() => setTrendRange('24h')}
-            variant={trendRange === '24h' ? 'contained' : 'outlined'}
-          >
-            24h
-          </Button>
-        </ButtonGroup>
-        <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
-          {windowMode === 'time'
-            ? timeWindowMinutes < 1
-              ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s`
-              : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
-            : `Window: Last ${maxDataPoints} points`}
-        </Typography>
-      </Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-        <TextField
-          size="small"
-          type="datetime-local"
-          label="At time"
-          value={centerTimeInput}
-          onChange={(e) => setCenterTimeInput(e.target.value)}
-          InputLabelProps={{ shrink: true }}
-        />
-        <TextField
-          select
-          size="small"
-          label="Around"
-          value={String(aroundMinutes)}
-          onChange={(e) => setAroundMinutes(Number(e.target.value))}
-          sx={{ minWidth: 120 }}
-        >
-          <MenuItem value="1">+/- 1m</MenuItem>
-          <MenuItem value="5">+/- 5m</MenuItem>
-          <MenuItem value="15">+/- 15m</MenuItem>
-          <MenuItem value="30">+/- 30m</MenuItem>
-          <MenuItem value="60">+/- 1h</MenuItem>
-        </TextField>
-        <Button
-          size="small"
-          variant="outlined"
-          onClick={applyCenteredWindow}
-          disabled={!centerTimeInput}
-        >
-          Show
-        </Button>
-      </Box>
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
-        Mode: {trendRange === 'live' ? 'Live updates' : trendRange === 'custom' ? `History (centered +/- ${aroundMinutes}m)` : `History (${trendRange})`}
-      </Typography>
-      {showPaper && (
+      {showAnalogHistoryChrome ? (
+        <>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1, gap: 1, flexWrap: 'wrap' }}>
+            <ButtonGroup size="small" variant="outlined">
+              <Button
+                onClick={() => {
+                  setTrendRange('live');
+                  setCustomWindow(null);
+                }}
+                variant={trendRange === 'live' ? 'contained' : 'outlined'}
+              >
+                Live
+              </Button>
+              <Button
+                onClick={() => setTrendRange('10m')}
+                variant={trendRange === '10m' ? 'contained' : 'outlined'}
+              >
+                10m
+              </Button>
+              <Button
+                onClick={() => setTrendRange('1h')}
+                variant={trendRange === '1h' ? 'contained' : 'outlined'}
+              >
+                1h
+              </Button>
+              <Button
+                onClick={() => setTrendRange('24h')}
+                variant={trendRange === '24h' ? 'contained' : 'outlined'}
+              >
+                24h
+              </Button>
+            </ButtonGroup>
+            <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
+              {windowMode === 'time'
+                ? timeWindowMinutes < 1
+                  ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s`
+                  : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
+                : `Window: Last ${maxDataPoints} points`}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
+            <TextField
+              size="small"
+              type="datetime-local"
+              label="At time"
+              value={centerTimeInput}
+              onChange={(e) => setCenterTimeInput(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              select
+              size="small"
+              label="Around"
+              value={String(aroundMinutes)}
+              onChange={(e) => setAroundMinutes(Number(e.target.value))}
+              sx={{ minWidth: 120 }}
+            >
+              <MenuItem value="1">+/- 1m</MenuItem>
+              <MenuItem value="5">+/- 5m</MenuItem>
+              <MenuItem value="15">+/- 15m</MenuItem>
+              <MenuItem value="30">+/- 30m</MenuItem>
+              <MenuItem value="60">+/- 1h</MenuItem>
+            </TextField>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={applyCenteredWindow}
+              disabled={!centerTimeInput}
+            >
+              Show
+            </Button>
+          </Box>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+            Mode: {trendRange === 'live' ? 'Live updates' : trendRange === 'custom' ? `History (centered +/- ${aroundMinutes}m)` : `History (${trendRange})`}
+          </Typography>
+        </>
+      ) : null}
+      {showPaper && temperatureSensor ? (
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          {temperatureSensor?.sensorType}
+          {temperatureSensor.sensorType}
         </Typography>
-      )}
+      ) : null}
       
-      {/* Zoom Controls - Only show in time mode */}
-      {!loading && !error && temperatureSensor && windowMode === 'time' && (
+      {/* Live line chart window trim — presets + slider */}
+      {showLiveLineWindowTrim ? (
         <Box
           sx={{
             mb: 2,
@@ -420,9 +451,14 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             </Tooltip>
           </Box>
         </Box>
-      )}
-      {/* Current Value Display */}
-      {!loading && !error && temperatureSensor && currentValue !== null && (
+      ) : null}
+      {/* Current Value Display (analog numeric summary; discrete uses indicator below) */}
+      {!loading &&
+        !error &&
+        temperatureSensor &&
+        currentValue !== null &&
+        !isDiscreteSensor &&
+        (
         <Box
           sx={{
             mb: 2,
@@ -499,7 +535,25 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             No chart sensor available
           </Typography>
         </Box>
-      ) : chartData.length === 0 ? (
+      ) : isDiscreteSensor ? (
+        <Box
+          sx={{
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.paper',
+            py: 1,
+          }}
+        >
+          <DiscreteSensorIndicator
+            value={currentValue}
+            sensorName={temperatureSensor.sensorName}
+            hideSensorHeading={hideDiscreteSensorHeading}
+          />
+        </Box>
+      ) : chartData.length === 0 &&
+        !(trendRange === 'live' && currentValue !== null && !useAnalogGauge) &&
+        !(trendRange === 'live' && useAnalogGauge && gaugeDisplayValue !== null) ? (
         <Box
           sx={{
             height,
@@ -515,6 +569,24 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
           <Typography color="text.secondary" variant="body2">
             No readings for this sensor yet
           </Typography>
+        </Box>
+      ) : useAnalogGauge ? (
+        <Box
+          sx={{
+            p: { xs: 1, sm: 2 },
+            border: 1,
+            borderColor: 'divider',
+            borderRadius: 2,
+            bgcolor: 'background.paper',
+          }}
+        >
+          <SensorAnalogGauge
+            value={gaugeDisplayValue}
+            min={Number(gaugeMin)}
+            max={Number(gaugeMax)}
+            unit={temperatureSensor.unit || ''}
+            name={temperatureSensor.sensorName}
+          />
         </Box>
       ) : (
         <Box
@@ -532,7 +604,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             timeWindowMinutes={windowMode === 'time' ? timeWindowMinutes : undefined}
             name={temperatureSensor?.sensorName ?? 'Sensor'}
             height={height}
-            unit={temperatureSensor.unit || '°C'}
+            unit={temperatureSensor.unit || ''}
           />
         </Box>
       )}

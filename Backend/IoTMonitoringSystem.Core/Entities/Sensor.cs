@@ -31,6 +31,12 @@ namespace IoTMonitoringSystem.Core.Entities
         [Column(TypeName = "decimal(18,2)")]
         public decimal? MaxValue { get; set; }
 
+        /// <summary>Analog = continuous values (chart/gauge); Discrete = ON/OFF style (e.g. 0/1).</summary>
+        public SensorSignalKind SignalKind { get; set; } = SensorSignalKind.Analog;
+
+        /// <summary>For analog sensors only: line chart vs gauge (null treats as Line).</summary>
+        public SensorChartStyle? ChartStyle { get; set; }
+
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -10,8 +10,13 @@ import {
   Alert,
   FormControlLabel,
   Switch,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
-import { CreateSensor } from '../../types';
+import type { SelectChangeEvent } from '@mui/material/Select';
+import { CreateSensor, SensorSignalKind, SensorChartStyle } from '../../types';
 
 export type SensorFormValues = CreateSensor & { isActive?: boolean };
 
@@ -22,6 +27,8 @@ const emptySensorForm = (): SensorFormValues => ({
   edgeDeviceId: '',
   minValue: undefined,
   maxValue: undefined,
+  signalKind: 'analog',
+  chartStyle: 'line',
   isActive: true,
 });
 
@@ -48,13 +55,20 @@ const SensorForm: React.FC<SensorFormProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    const base = emptySensorForm();
     setFormData({
+      ...base,
       sensorName: initialData?.sensorName ?? '',
       sensorType: initialData?.sensorType ?? '',
       unit: initialData?.unit ?? '',
       edgeDeviceId: initialData?.edgeDeviceId ?? '',
       minValue: initialData?.minValue,
       maxValue: initialData?.maxValue,
+      signalKind: initialData?.signalKind ?? 'analog',
+      chartStyle:
+        initialData?.signalKind === 'discrete'
+          ? undefined
+          : initialData?.chartStyle ?? 'line',
       isActive: initialData?.isActive ?? true,
     });
     setError(null);
@@ -73,6 +87,19 @@ const SensorForm: React.FC<SensorFormProps> = ({
         [field]: v === '' ? undefined : Number(v),
       });
     };
+
+  const handleSignalKindChange = (e: SelectChangeEvent<SensorSignalKind>) => {
+    const v = e.target.value as SensorSignalKind;
+    setFormData((prev) => ({
+      ...prev,
+      signalKind: v,
+      chartStyle: v === 'discrete' ? undefined : prev.chartStyle ?? 'line',
+    }));
+  };
+
+  const handleChartStyleChange = (e: SelectChangeEvent<SensorChartStyle>) => {
+    setFormData((prev) => ({ ...prev, chartStyle: e.target.value as SensorChartStyle }));
+  };
 
   const handleSubmit = async () => {
     if (
@@ -100,6 +127,8 @@ const SensorForm: React.FC<SensorFormProps> = ({
   const canSave =
     formData.sensorName.trim().length > 0 && formData.sensorType.trim().length > 0;
 
+  const isAnalog = formData.signalKind !== 'discrete';
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{title}</DialogTitle>
@@ -120,12 +149,50 @@ const SensorForm: React.FC<SensorFormProps> = ({
             />
           </Grid>
           <Grid item xs={12} sm={6}>
+            <FormControl fullWidth size="medium">
+              <InputLabel id="sensor-signal-kind">Signal kind</InputLabel>
+              <Select
+                labelId="sensor-signal-kind"
+                label="Signal kind"
+                value={formData.signalKind ?? 'analog'}
+                onChange={handleSignalKindChange}
+              >
+                <MenuItem value="analog">Analog (numeric values)</MenuItem>
+                <MenuItem value="discrete">Discrete (ON/OFF, typically 0/1)</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            {isAnalog ? (
+              <FormControl fullWidth size="medium">
+                <InputLabel id="sensor-chart-style">Analog chart style</InputLabel>
+                <Select
+                  labelId="sensor-chart-style"
+                  label="Analog chart style"
+                  value={formData.chartStyle ?? 'line'}
+                  onChange={handleChartStyleChange}
+                >
+                  <MenuItem value="line">Line chart</MenuItem>
+                  <MenuItem value="gauge">Bar gauge</MenuItem>
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                fullWidth
+                disabled
+                label="Chart style"
+                value="LED indicator (discrete)"
+                helperText="Not used for discrete sensors"
+              />
+            )}
+          </Grid>
+          <Grid item xs={12} sm={6}>
             <TextField
               fullWidth
               label="Sensor Type"
               required
-              placeholder="e.g. Temperature, Pressure"
-              helperText="Max 50 characters"
+              placeholder="e.g. Temperature, Pressure, Digital input"
+              helperText="Max 50 characters — what this sensor measures"
               value={formData.sensorType}
               onChange={handleChange('sensorType')}
               inputProps={{ maxLength: 50 }}
@@ -159,6 +226,7 @@ const SensorForm: React.FC<SensorFormProps> = ({
               type="number"
               value={formData.minValue === undefined ? '' : formData.minValue}
               onChange={handleNumberChange('minValue')}
+              helperText={isAnalog ? 'Used for gauge scale' : 'Optional'}
               inputProps={{ step: 'any' }}
             />
           </Grid>
@@ -169,6 +237,7 @@ const SensorForm: React.FC<SensorFormProps> = ({
               type="number"
               value={formData.maxValue === undefined ? '' : formData.maxValue}
               onChange={handleNumberChange('maxValue')}
+              helperText={isAnalog ? 'Used for gauge scale' : 'Optional'}
               inputProps={{ step: 'any' }}
             />
           </Grid>

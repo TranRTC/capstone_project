@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using IoTMonitoringSystem.Core.Entities;
 
 namespace IoTMonitoringSystem.Core.DTOs
 {
@@ -21,6 +22,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         public decimal? MinValue { get; set; }
 
         public decimal? MaxValue { get; set; }
+
+        public SensorSignalKind SignalKind { get; set; } = SensorSignalKind.Analog;
+
+        public SensorChartStyle? ChartStyle { get; set; }
     }
 
     public class UpdateSensorDto
@@ -39,6 +44,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         public decimal? MaxValue { get; set; }
 
         public bool? IsActive { get; set; }
+
+        public SensorSignalKind? SignalKind { get; set; }
+
+        public SensorChartStyle? ChartStyle { get; set; }
     }
 
     public class SensorDto
@@ -51,6 +60,8 @@ namespace IoTMonitoringSystem.Core.DTOs
         public string? Unit { get; set; }
         public decimal? MinValue { get; set; }
         public decimal? MaxValue { get; set; }
+        public SensorSignalKind SignalKind { get; set; }
+        public SensorChartStyle? ChartStyle { get; set; }
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

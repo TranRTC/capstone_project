@@ -61,6 +61,9 @@ export interface DeviceCapabilitiesInput {
   controlUnit?: string;
 }
 
+export type SensorSignalKind = 'analog' | 'discrete';
+export type SensorChartStyle = 'line' | 'gauge';
+
 export interface Sensor {
   sensorId: number;
   deviceId: number;
@@ -70,6 +73,8 @@ export interface Sensor {
   unit?: string;
   minValue?: number;
   maxValue?: number;
+  signalKind: SensorSignalKind;
+  chartStyle?: SensorChartStyle | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -82,6 +87,8 @@ export interface CreateSensor {
   minValue?: number;
   maxValue?: number;
   edgeDeviceId?: string;
+  signalKind?: SensorSignalKind;
+  chartStyle?: SensorChartStyle | null;
 }
 
 /** Matches backend UpdateSensorDto (partial fields + optional IsActive). */

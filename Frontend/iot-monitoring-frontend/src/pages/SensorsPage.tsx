@@ -23,7 +23,7 @@ import { apiService } from '../services/api';
 import { authService } from '../services/authService';
 import SensorForm, { SensorFormValues } from '../components/sensor/SensorForm';
 import ConfirmDialog from '../components/common/ConfirmDialog';
-import { DeviceList, Sensor } from '../types';
+import { CreateSensor, DeviceList, Sensor } from '../types';
 
 const panelSx = {
   p: 2.5,
@@ -71,6 +71,7 @@ const cardActionGhostDangerSx = {
 };
 
 function sensorToFormValues(s: Sensor): SensorFormValues {
+  const kind = s.signalKind ?? 'analog';
   return {
     sensorName: s.sensorName,
     sensorType: s.sensorType,
@@ -78,11 +79,14 @@ function sensorToFormValues(s: Sensor): SensorFormValues {
     edgeDeviceId: s.edgeDeviceId ?? '',
     minValue: s.minValue ?? undefined,
     maxValue: s.maxValue ?? undefined,
+    signalKind: kind,
+    chartStyle: kind === 'discrete' ? undefined : (s.chartStyle ?? 'line'),
     isActive: s.isActive,
   };
 }
 
-function toCreatePayload(v: SensorFormValues) {
+function toCreatePayload(v: SensorFormValues): CreateSensor {
+  const isDiscrete = v.signalKind === 'discrete';
   return {
     sensorName: v.sensorName.trim(),
     sensorType: v.sensorType.trim(),
@@ -90,6 +94,8 @@ function toCreatePayload(v: SensorFormValues) {
     edgeDeviceId: v.edgeDeviceId?.trim() || undefined,
     minValue: v.minValue,
     maxValue: v.maxValue,
+    signalKind: v.signalKind ?? 'analog',
+    chartStyle: isDiscrete ? null : (v.chartStyle ?? 'line'),
   };
 }
 
@@ -390,6 +396,15 @@ const SensorsPage: React.FC = () => {
                   <Typography variant="body2" color="text.secondary" gutterBottom>
                     Type: {sensor.sensorType}
                   </Typography>
+                  {(sensor.signalKind ?? 'analog') === 'discrete' ? (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Signal: discrete · LED indicator
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Signal: analog · {(sensor.chartStyle ?? 'line') === 'gauge' ? 'bar gauge' : 'line chart'}
+                    </Typography>
+                  )}
                   {sensor.unit ? (
                     <Typography variant="body2" color="text.secondary">
                       Unit: {sensor.unit}
