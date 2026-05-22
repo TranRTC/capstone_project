@@ -1,18 +1,21 @@
 /*
- * Arduino Uno R4 WiFi — LOCAL Mosquitto (no TLS)
+ * Arduino Uno R4 WiFi — LOCAL Mosquitto
  *
- * - DHT11 on pin 2: temperature → SENSOR_TEMP_ID, humidity → SENSOR_HUM_ID
+ * Sensors (publish):
+ *   DHT11 pin 2 — temp / humidity
+ *   Digital inputs pin 4, 5 — 0/1 (INPUT_PULLUP)
  *
- * Topic:  devices/{deviceId}/sensors/{sensorId}/readings
- * Payload: {"value": <float>}
+ * Actuators (subscribe devices/{id}/commands):
+ *   Digital outputs pin 7, 8 — SetPower, channel = pin number
+ *   Analog output pin 3 (PWM) — SetValue, channel = 3
  *
- * Requires: Mosquitto on PC :1883, backend API running, sensors in local DB.
- * MQTT_BROKER = your PC's LAN IPv4 (ipconfig), NOT "localhost".
+ * Create matching sensors/actuators in the dashboard (see README).
  */
 
 #include <WiFiS3.h>
 #include <ArduinoMqttClient.h>
 #include <DHT.h>
+#include "uno_r4_io.h"
 
 #define DHT_PIN 2
 DHT dht(DHT_PIN, DHT11);
@@ -21,7 +24,6 @@ DHT dht(DHT_PIN, DHT11);
 const char* WIFI_SSID     = "trandiep";
 const char* WIFI_PASSWORD = "bingchilling@3614";
 
-// PC Wi-Fi IPv4 from ipconfig — NOT "localhost" on the Arduino
 const int MQTT_HOST_OCTETS[] = { 192, 168, 0, 112 };
 const int   MQTT_PORT        = 1883;
 
@@ -32,21 +34,40 @@ IPAddress mqttHost(
   MQTT_HOST_OCTETS[3]
 );
 
+// Match IDs after a fresh DB reset (device 1, sensors 1–4) — see Documents/database/README-Reset-Database.md
 const int DEVICE_ID       = 1;
 const int SENSOR_TEMP_ID  = 1;
 const int SENSOR_HUM_ID   = 2;
+const int SENSOR_DI1_ID   = 3;
+const int SENSOR_DI2_ID   = 4;
 
-const unsigned long PUBLISH_MS = 1000;  // publish every 1 s (DHT11 minimum ~1 s between reads)
+const unsigned long PUBLISH_MS = 1000;
 // =======================================================
 
 WiFiClient wifiClient;
 MqttClient mqttClient(wifiClient);
 
+UnoR4IoConfig ioConfig = {
+  DEVICE_ID,
+  SENSOR_DI1_ID,
+  SENSOR_DI2_ID,
+  0.0f,
+  100.0f
+};
+
 char topicTemp[64];
 char topicHum[64];
+char topicDi1[64];
+char topicDi2[64];
+char topicCommands[48];
+char topicAck[48];
+
 unsigned long lastPublish = 0;
+bool commandTopicReady = false;
 
 const unsigned long DHCP_TIMEOUT_MS = 20000;
+
+void onMqttMessage(int messageSize);
 
 bool hasValidIp() {
   return WiFi.localIP()[0] != 0;
@@ -72,34 +93,32 @@ void buildTopics() {
            "devices/%d/sensors/%d/readings", DEVICE_ID, SENSOR_TEMP_ID);
   snprintf(topicHum, sizeof(topicHum),
            "devices/%d/sensors/%d/readings", DEVICE_ID, SENSOR_HUM_ID);
+  unoR4IoBuildSensorTopics(ioConfig, topicDi1, topicDi2, sizeof(topicDi1));
+  unoR4IoBuildCommandTopic(DEVICE_ID, topicCommands, sizeof(topicCommands));
+  unoR4IoBuildAckTopic(DEVICE_ID, topicAck, sizeof(topicAck));
 }
 
 void connectWiFi() {
   Serial.print("WiFi");
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println(" - no WiFi module!");
-    for (;;) {
-      delay(1000);
-    }
+    for (;;) delay(1000);
   }
 
   while (!wifiReady()) {
     WiFi.disconnect();
     delay(500);
-
     Serial.print(" connect");
     while (WiFi.begin(WIFI_SSID, WIFI_PASSWORD) != WL_CONNECTED) {
       Serial.print(".");
       delay(500);
     }
     Serial.println(" linked");
-
     if (!waitForDhcp()) {
-      Serial.println("No IP (0.0.0.0) — check SSID/password, 2.4 GHz Wi-Fi, router DHCP");
+      Serial.println("No IP — check Wi-Fi");
       delay(3000);
     }
   }
-
   Serial.print("Board IP: ");
   Serial.println(WiFi.localIP());
 }
@@ -112,12 +131,20 @@ bool testTcpToBroker() {
     probe.stop();
     return true;
   }
-  Serial.println("FAIL — run Add-MosquittoFirewallRules.ps1 as Admin, or check router AP isolation");
+  Serial.println("FAIL");
   return false;
 }
 
+void subscribeCommands() {
+  mqttClient.onMessage(onMqttMessage);
+  Serial.print("Subscribe ");
+  Serial.println(topicCommands);
+  mqttClient.subscribe(topicCommands, 1);
+  commandTopicReady = true;
+}
+
 void connectMqtt() {
-  mqttClient.setId("uno_r4_local");
+  mqttClient.setId("uno_r4_local_io");
   Serial.print("MQTT -> ");
   Serial.println(mqttHost);
 
@@ -134,58 +161,76 @@ void connectMqtt() {
     delay(3000);
   }
   Serial.println("MQTT connected");
+  subscribeCommands();
 }
 
 bool publishReading(const char* topic, float value) {
   char payload[48];
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", value);
-  mqttClient.beginMessage(topic, false, 1);  // QoS 1 (matches backend ingest)
+  mqttClient.beginMessage(topic, false, 1);
   mqttClient.print(payload);
   bool ok = mqttClient.endMessage() != 0;
   mqttClient.poll();
   return ok;
 }
 
+void publishAckJson(const char* ackJson) {
+  Serial.print("ACK ");
+  Serial.println(ackJson);
+  mqttClient.beginMessage(topicAck, false, 1);
+  mqttClient.print(ackJson);
+  mqttClient.endMessage();
+  mqttClient.poll();
+}
+
+void onMqttMessage(int messageSize) {
+  char buf[512];
+  int i = 0;
+  while (mqttClient.available() && i < (int)sizeof(buf) - 1) {
+    buf[i++] = (char)mqttClient.read();
+  }
+  buf[i] = '\0';
+
+  Serial.print("CMD ");
+  Serial.println(buf);
+  unoR4IoHandleCommandJson(buf, i, ioConfig, publishAckJson);
+}
+
 void setup() {
   Serial.begin(9600);
   delay(2000);
   dht.begin();
+  unoR4IoBegin();
   buildTopics();
   connectWiFi();
   connectMqtt();
 }
 
 void loop() {
-  if (!wifiReady()) {
-    connectWiFi();
-  }
+  if (!wifiReady()) connectWiFi();
   if (wifiReady() && !mqttClient.connected()) {
+    commandTopicReady = false;
     connectMqtt();
   }
   mqttClient.poll();
 
-  if (!wifiReady() || !mqttClient.connected()) {
-    return;
-  }
+  if (!wifiReady() || !mqttClient.connected()) return;
+  if (!commandTopicReady) subscribeCommands();
 
-  if (millis() - lastPublish < PUBLISH_MS) {
-    return;
-  }
+  if (millis() - lastPublish < PUBLISH_MS) return;
   lastPublish = millis();
 
   float tempC = dht.readTemperature();
   float hum = dht.readHumidity();
-
-  if (isnan(tempC) || isnan(hum)) {
-    Serial.println("DHT11 read failed — check pin 2 / wiring");
-    return;
+  if (!isnan(tempC)) {
+    Serial.print("Temp ");
+    Serial.println(publishReading(topicTemp, tempC) ? "OK" : "FAIL");
+  }
+  if (!isnan(hum)) {
+    Serial.print("Hum ");
+    Serial.println(publishReading(topicHum, hum) ? "OK" : "FAIL");
   }
 
-  Serial.print("Temp ");
-  Serial.print(tempC);
-  Serial.println(publishReading(topicTemp, tempC) ? " pub OK" : " pub FAIL");
-
-  Serial.print("Hum ");
-  Serial.print(hum);
-  Serial.println(publishReading(topicHum, hum) ? " pub OK" : " pub FAIL");
+  Serial.print("DI ");
+  unoR4IoPublishDigitalInputs(topicDi1, topicDi2, publishReading);
 }

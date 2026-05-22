@@ -28,5 +28,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         public int PageNumber { get; set; } = 1;
         public int PageSize { get; set; } = 50;
     }
+
+    public class AlertDeleteResultDto
+    {
+        public int DeletedCount { get; set; }
+    }
 }
 

@@ -116,6 +116,58 @@ namespace IoTMonitoringSystem.Services
             return alertDto;
         }
 
+        public async Task DeleteAlertAsync(long alertId)
+        {
+            var alert = await _context.Alerts.FindAsync(alertId);
+            if (alert == null)
+                throw new KeyNotFoundException($"Alert with ID {alertId} not found");
+
+            _context.Alerts.Remove(alert);
+            await _context.SaveChangesAsync();
+        }
+
+        public Task<int> DeleteAlertsByDeviceAsync(int deviceId)
+        {
+            return DeleteAlertsBulkAsync(new AlertQueryDto { DeviceId = deviceId });
+        }
+
+        public async Task<int> DeleteAlertsBulkAsync(AlertQueryDto query)
+        {
+            if (!query.DeviceId.HasValue)
+                throw new ArgumentException("deviceId is required for bulk delete.", nameof(query));
+
+            var dbQuery = BuildFilteredAlertsQuery(query);
+            var alerts = await dbQuery.ToListAsync();
+            if (alerts.Count == 0)
+                return 0;
+
+            _context.Alerts.RemoveRange(alerts);
+            await _context.SaveChangesAsync();
+            return alerts.Count;
+        }
+
+        private IQueryable<Alert> BuildFilteredAlertsQuery(AlertQueryDto query)
+        {
+            var dbQuery = _context.Alerts.AsQueryable();
+
+            if (!string.IsNullOrEmpty(query.Status))
+                dbQuery = dbQuery.Where(a => a.Status == query.Status);
+
+            if (!string.IsNullOrEmpty(query.Severity))
+                dbQuery = dbQuery.Where(a => a.Severity == query.Severity);
+
+            if (query.DeviceId.HasValue)
+                dbQuery = dbQuery.Where(a => a.DeviceId == query.DeviceId.Value);
+
+            if (query.StartDate.HasValue)
+                dbQuery = dbQuery.Where(a => a.TriggeredAt >= query.StartDate.Value);
+
+            if (query.EndDate.HasValue)
+                dbQuery = dbQuery.Where(a => a.TriggeredAt <= query.EndDate.Value);
+
+            return dbQuery;
+        }
+
         public async Task EvaluateAlertRulesAsync(SensorReadingDto reading)
         {
             // Get all enabled alert rules that match this device and/or sensor

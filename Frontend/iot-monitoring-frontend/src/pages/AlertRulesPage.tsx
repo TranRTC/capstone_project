@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -28,9 +28,13 @@ import {
   Switch,
   FormControlLabel,
   IconButton,
-  Divider,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, DeleteOutline as DeleteIcon } from '@mui/icons-material';
+import {
+  Add as AddIcon,
+  Edit as EditIcon,
+  DeleteOutline as DeleteIcon,
+  Visibility as ViewIcon,
+} from '@mui/icons-material';
 import type { ChipProps } from '@mui/material/Chip';
 import { apiService } from '../services/api';
 import { authService } from '../services/authService';
@@ -131,6 +135,11 @@ function formToPayload(form: RuleFormState, deviceId: number, sensorId: number):
   return base;
 }
 
+function formatDateTime(iso?: string): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString();
+}
+
 const AlertRulesPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
@@ -138,32 +147,67 @@ const AlertRulesPage: React.FC = () => {
   const [devicesLoading, setDevicesLoading] = useState(true);
   const [devicesError, setDevicesError] = useState<string | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<number | ''>('');
-
-  const [sensors, setSensors] = useState<Sensor[]>([]);
-  const [sensorsLoading, setSensorsLoading] = useState(false);
   const [selectedSensorId, setSelectedSensorId] = useState<number | ''>('');
 
-  const [rules, setRules] = useState<AlertRule[]>([]);
+  const [filterSensors, setFilterSensors] = useState<Sensor[]>([]);
+  const [filterSensorsLoading, setFilterSensorsLoading] = useState(false);
+
+  const [allRules, setAllRules] = useState<AlertRule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [sensorNameById, setSensorNameById] = useState<Record<number, string>>({});
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [form, setForm] = useState<RuleFormState>(emptyForm());
   const [formError, setFormError] = useState<string | null>(null);
   const [formSaving, setFormSaving] = useState(false);
+  const [dialogDeviceId, setDialogDeviceId] = useState<number | ''>('');
+  const [dialogSensorId, setDialogSensorId] = useState<number | ''>('');
+  const [dialogSensors, setDialogSensors] = useState<Sensor[]>([]);
+  const [dialogSensorsLoading, setDialogSensorsLoading] = useState(false);
+
+  const [viewingRule, setViewingRule] = useState<AlertRule | null>(null);
   const [confirmRule, setConfirmRule] = useState<AlertRule | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const canWrite = authService.isOperatorOrAbove();
 
-  // Load devices on mount
+  const deviceNameById = useMemo(() => {
+    const map: Record<number, string> = {};
+    devices.forEach((d) => { map[d.deviceId] = d.deviceName; });
+    return map;
+  }, [devices]);
+
+  const filteredRules = useMemo(() => {
+    let list = allRules;
+    if (selectedDeviceId !== '') {
+      list = list.filter((r) => r.deviceId === selectedDeviceId);
+    }
+    if (selectedSensorId !== '') {
+      list = list.filter((r) => r.sensorId === selectedSensorId);
+    }
+    return list;
+  }, [allRules, selectedDeviceId, selectedSensorId]);
+
+  const needsDialogDeviceSensor =
+    formOpen && !editingRule && (selectedDeviceId === '' || selectedSensorId === '');
+
+  const formContextSensor = useMemo(() => {
+    const targetSensorId = editingRule?.sensorId ?? (selectedSensorId !== '' ? selectedSensorId : dialogSensorId);
+    if (targetSensorId === '' || targetSensorId === undefined) return undefined;
+    const sid = targetSensorId as number;
+    return (
+      dialogSensors.find((s) => s.sensorId === sid)
+      ?? filterSensors.find((s) => s.sensorId === sid)
+    );
+  }, [editingRule, selectedSensorId, filterSensors, dialogSensorId, dialogSensors]);
+
   useEffect(() => {
     loadDevices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pre-select device from query param once devices are loaded
   useEffect(() => {
     if (devicesLoading || devices.length === 0) return;
     const qId = Number.parseInt(searchParams.get('deviceId') ?? '', 10);
@@ -172,25 +216,64 @@ const AlertRulesPage: React.FC = () => {
     }
   }, [searchParams, devices, devicesLoading]);
 
-  // When device changes: load its sensors, reset sensor + rules
+  useEffect(() => {
+    if (!devicesLoading) {
+      loadAllRules();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devicesLoading]);
+
   useEffect(() => {
     setSelectedSensorId('');
-    setRules([]);
-    setRulesError(null);
     if (selectedDeviceId === '') {
-      setSensors([]);
+      setFilterSensors([]);
       return;
     }
-    loadSensors(selectedDeviceId);
+    loadFilterSensors(selectedDeviceId);
   }, [selectedDeviceId]);
 
-  // When sensor changes: load rules for that sensor
   useEffect(() => {
-    setRules([]);
-    setRulesError(null);
-    if (selectedDeviceId === '' || selectedSensorId === '') return;
-    loadRules(selectedDeviceId, selectedSensorId);
-  }, [selectedSensorId]);
+    if (!formOpen || editingRule || !needsDialogDeviceSensor) return;
+    if (dialogDeviceId === '') {
+      setDialogSensors([]);
+      setDialogSensorId('');
+      return;
+    }
+    loadDialogSensors(dialogDeviceId);
+  }, [formOpen, editingRule, needsDialogDeviceSensor, dialogDeviceId]);
+
+  const refreshSensorNames = async (rules: AlertRule[]) => {
+    const deviceIds = Array.from(
+      new Set(rules.map((r) => r.deviceId).filter((id): id is number => id != null))
+    );
+    if (deviceIds.length === 0) {
+      setSensorNameById({});
+      return;
+    }
+    try {
+      const sensorLists = await Promise.all(deviceIds.map((id) => apiService.getSensorsByDevice(id)));
+      const map: Record<number, string> = {};
+      sensorLists.flat().forEach((s) => { map[s.sensorId] = s.sensorName; });
+      setSensorNameById(map);
+    } catch {
+      // keep previous cache on failure
+    }
+  };
+
+  const loadAllRules = async () => {
+    try {
+      setRulesLoading(true);
+      setRulesError(null);
+      const data = await apiService.getAlertRules();
+      setAllRules(data);
+      await refreshSensorNames(data);
+    } catch (err: any) {
+      setRulesError(err?.message || 'Failed to load alert rules');
+      setAllRules([]);
+    } finally {
+      setRulesLoading(false);
+    }
+  };
 
   const loadDevices = async () => {
     try {
@@ -205,36 +288,56 @@ const AlertRulesPage: React.FC = () => {
     }
   };
 
-  const loadSensors = async (deviceId: number) => {
+  const loadFilterSensors = async (deviceId: number) => {
     try {
-      setSensorsLoading(true);
+      setFilterSensorsLoading(true);
       const data = await apiService.getSensorsByDevice(deviceId);
-      setSensors(data);
+      setFilterSensors(data);
     } catch {
-      setSensors([]);
+      setFilterSensors([]);
     } finally {
-      setSensorsLoading(false);
+      setFilterSensorsLoading(false);
     }
   };
 
-  const loadRules = async (deviceId: number, sensorId: number) => {
+  const loadDialogSensors = async (deviceId: number) => {
     try {
-      setRulesLoading(true);
-      setRulesError(null);
-      const all = await apiService.getAlertRulesByDevice(deviceId);
-      // Filter to only rules for this specific sensor
-      setRules(all.filter((r) => r.sensorId === sensorId));
-    } catch (err: any) {
-      setRulesError(err?.message || 'Failed to load alert rules');
+      setDialogSensorsLoading(true);
+      const data = await apiService.getSensorsByDevice(deviceId);
+      setDialogSensors(data);
+    } catch {
+      setDialogSensors([]);
     } finally {
-      setRulesLoading(false);
+      setDialogSensorsLoading(false);
     }
+  };
+
+  const resolveSaveIds = (): { deviceId: number; sensorId: number } | null => {
+    if (editingRule) {
+      if (editingRule.deviceId == null || editingRule.sensorId == null) return null;
+      return { deviceId: editingRule.deviceId, sensorId: editingRule.sensorId };
+    }
+    if (selectedDeviceId !== '' && selectedSensorId !== '') {
+      return { deviceId: selectedDeviceId as number, sensorId: selectedSensorId as number };
+    }
+    if (dialogDeviceId !== '' && dialogSensorId !== '') {
+      return { deviceId: dialogDeviceId as number, sensorId: dialogSensorId as number };
+    }
+    return null;
   };
 
   const openCreate = () => {
     setEditingRule(null);
     setForm(emptyForm());
     setFormError(null);
+    if (selectedDeviceId !== '' && selectedSensorId !== '') {
+      setDialogDeviceId(selectedDeviceId);
+      setDialogSensorId(selectedSensorId);
+      loadDialogSensors(selectedDeviceId as number);
+    } else {
+      setDialogDeviceId('');
+      setDialogSensorId('');
+    }
     setFormOpen(true);
   };
 
@@ -242,12 +345,24 @@ const AlertRulesPage: React.FC = () => {
     setEditingRule(rule);
     setForm(ruleToForm(rule));
     setFormError(null);
+    setDialogDeviceId(rule.deviceId ?? '');
+    setDialogSensorId(rule.sensorId ?? '');
+    if (rule.deviceId != null) {
+      loadDialogSensors(rule.deviceId);
+    }
     setFormOpen(true);
+  };
+
+  const openView = (rule: AlertRule) => {
+    setViewingRule(rule);
   };
 
   const closeForm = () => {
     setFormOpen(false);
     setEditingRule(null);
+    setDialogDeviceId('');
+    setDialogSensorId('');
+    setDialogSensors([]);
   };
 
   const handleFormChange = <K extends keyof RuleFormState>(key: K, value: RuleFormState[K]) => {
@@ -264,17 +379,23 @@ const AlertRulesPage: React.FC = () => {
       setFormError('Min Value and Max Value are required for range rules.'); return;
     }
 
+    const ids = resolveSaveIds();
+    if (!ids) {
+      setFormError('Device and sensor are required.');
+      return;
+    }
+
     setFormSaving(true);
     setFormError(null);
     try {
-      const payload = formToPayload(form, selectedDeviceId as number, selectedSensorId as number);
+      const payload = formToPayload(form, ids.deviceId, ids.sensorId);
       if (editingRule) {
         await apiService.updateAlertRule(editingRule.alertRuleId, payload);
       } else {
         await apiService.createAlertRule(payload);
       }
       closeForm();
-      await loadRules(selectedDeviceId as number, selectedSensorId as number);
+      await loadAllRules();
     } catch (err: any) {
       setFormError(err?.message || 'Failed to save rule.');
     } finally {
@@ -293,7 +414,7 @@ const AlertRulesPage: React.FC = () => {
     try {
       await apiService.deleteAlertRule(confirmRule.alertRuleId);
       setConfirmRule(null);
-      await loadRules(selectedDeviceId as number, selectedSensorId as number);
+      await loadAllRules();
     } catch (err: any) {
       setActionError(err?.message || 'Failed to delete rule.');
       setConfirmRule(null);
@@ -302,8 +423,23 @@ const AlertRulesPage: React.FC = () => {
     }
   };
 
-  const selectedSensor = sensors.find((s) => s.sensorId === selectedSensorId);
-  const canAddRule = selectedDeviceId !== '' && selectedSensorId !== '' && !rulesLoading;
+  const clearFilters = () => {
+    setSelectedDeviceId('');
+    setSelectedSensorId('');
+    setFilterSensors([]);
+  };
+
+  const deviceLabel = (rule: AlertRule) => {
+    if (rule.deviceId == null) return '—';
+    return deviceNameById[rule.deviceId] ?? `Device ${rule.deviceId}`;
+  };
+
+  const sensorLabel = (rule: AlertRule) => {
+    if (rule.sensorId == null) return '—';
+    return sensorNameById[rule.sensorId] ?? `Sensor ${rule.sensorId}`;
+  };
+
+  const hasFilters = selectedDeviceId !== '' || selectedSensorId !== '';
 
   return (
     <Box>
@@ -333,50 +469,59 @@ const AlertRulesPage: React.FC = () => {
         </MuiAlert>
       )}
 
-      {/* Step 1 + 2: Device & Sensor selectors */}
       <Paper sx={{ ...panelSx, mb: 3 }}>
         <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-          Select a device and sensor to manage its alert rules.
+          All alert rules in your environment. Optionally filter by device or sensor.
         </Typography>
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start">
-          {/* Device selector */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start" flexWrap="wrap">
           {devicesLoading ? (
             <Skeleton variant="rounded" width={280} height={56} />
           ) : (
-            <FormControl sx={{ minWidth: 280 }} disabled={devices.length === 0}>
-              <InputLabel id="ar-device-label">1. Device</InputLabel>
+            <FormControl sx={{ minWidth: 280 }} disabled={devices.length === 0} size="small">
+              <InputLabel id="ar-device-label">Filter by device</InputLabel>
               <Select
                 labelId="ar-device-label"
                 value={selectedDeviceId}
-                label="1. Device"
-                onChange={(e) => setSelectedDeviceId(e.target.value as number)}
+                label="Filter by device"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedDeviceId(v === '' ? '' : (v as number));
+                }}
               >
+                <MenuItem value="">All devices</MenuItem>
                 {devices.map((d) => (
                   <MenuItem key={d.deviceId} value={d.deviceId}>
-                    {d.deviceName} <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>({d.deviceType})</Typography>
+                    {d.deviceName}
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+                      ({d.deviceType})
+                    </Typography>
                   </MenuItem>
                 ))}
               </Select>
-              {devices.length === 0 && (
-                <FormHelperText>No devices. <Link to="/devices">Register one first</Link>.</FormHelperText>
-              )}
             </FormControl>
           )}
 
-          {/* Sensor selector */}
-          {sensorsLoading ? (
+          {filterSensorsLoading ? (
             <Skeleton variant="rounded" width={280} height={56} />
           ) : (
-            <FormControl sx={{ minWidth: 280 }} disabled={selectedDeviceId === '' || sensors.length === 0}>
-              <InputLabel id="ar-sensor-label">2. Sensor</InputLabel>
+            <FormControl
+              sx={{ minWidth: 280 }}
+              disabled={selectedDeviceId === ''}
+              size="small"
+            >
+              <InputLabel id="ar-sensor-label">Filter by sensor</InputLabel>
               <Select
                 labelId="ar-sensor-label"
                 value={selectedSensorId}
-                label="2. Sensor"
-                onChange={(e) => setSelectedSensorId(e.target.value as number)}
+                label="Filter by sensor"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedSensorId(v === '' ? '' : (v as number));
+                }}
               >
-                {sensors.map((s) => (
+                <MenuItem value="">All sensors</MenuItem>
+                {filterSensors.map((s) => (
                   <MenuItem key={s.sensorId} value={s.sensorId}>
                     {s.sensorName}
                     <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
@@ -385,74 +530,70 @@ const AlertRulesPage: React.FC = () => {
                   </MenuItem>
                 ))}
               </Select>
-              {selectedDeviceId !== '' && sensors.length === 0 && !sensorsLoading && (
+              {selectedDeviceId !== '' && filterSensors.length === 0 && !filterSensorsLoading && (
                 <FormHelperText>No sensors on this device.</FormHelperText>
               )}
             </FormControl>
           )}
+
+          {hasFilters && (
+            <Button size="small" onClick={clearFilters} sx={{ alignSelf: 'center' }}>
+              Clear filters
+            </Button>
+          )}
         </Stack>
 
-        {selectedSensor && (
-          <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Divider orientation="vertical" flexItem />
-            <Typography variant="body2" color="text.secondary">
-              Viewing rules for <strong>{selectedSensor.sensorName}</strong> ({selectedSensor.sensorType}{selectedSensor.unit ? `, ${selectedSensor.unit}` : ''})
-              {selectedDeviceId !== '' && (
-                <> · <Link to={`/devices/${selectedDeviceId}`}>Open device detail</Link></>
-              )}
-            </Typography>
-          </Box>
-        )}
-
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           {canWrite && (
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={openCreate}
-              disabled={!canAddRule}
-            >
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate}>
               Add Rule
             </Button>
           )}
-          {selectedDeviceId !== '' && selectedSensorId === '' && (
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
-              Select a sensor to add rules.
-            </Typography>
+          {!canWrite && (
+            <Chip size="small" label="View only" variant="outlined" />
           )}
+          <Typography variant="caption" color="text.secondary">
+            {filteredRules.length} rule{filteredRules.length === 1 ? '' : 's'}
+            {hasFilters ? ' matching filters' : ' total'}
+          </Typography>
         </Box>
       </Paper>
 
-      {/* Rules table */}
       {rulesError && (
         <MuiAlert severity="error" sx={{ mb: 3 }} action={
-          <Button color="inherit" size="small" onClick={() => loadRules(selectedDeviceId as number, selectedSensorId as number)}>Retry</Button>
+          <Button color="inherit" size="small" onClick={loadAllRules}>Retry</Button>
         }>
           {rulesError}
         </MuiAlert>
       )}
 
-      {selectedSensorId !== '' && rulesLoading ? (
+      {rulesLoading ? (
         <Paper sx={{ ...panelSx }}>
           <Stack spacing={1.5}>
             {[1, 2, 3].map((k) => <Skeleton key={k} variant="rounded" height={52} />)}
           </Stack>
         </Paper>
-      ) : selectedSensorId !== '' && rules.length === 0 && !rulesError ? (
+      ) : filteredRules.length === 0 && !rulesError ? (
         <Paper sx={{ ...panelSx }}>
           <Typography color="text.secondary">
-            No alert rules for <strong>{selectedSensor?.sensorName}</strong> yet.
+            {allRules.length === 0
+              ? 'No alert rules yet.'
+              : 'No rules match these filters.'}
           </Typography>
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-            Click <strong>Add Rule</strong> to create one.
-          </Typography>
+          {canWrite && allRules.length === 0 && (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+              Click <strong>Add Rule</strong> to create one.
+            </Typography>
+          )}
         </Paper>
-      ) : rules.length > 0 ? (
+      ) : filteredRules.length > 0 ? (
         <TableContainer component={Paper} sx={{ ...panelSx, p: 0 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
                 <TableCell>Rule Name</TableCell>
+                <TableCell>Device</TableCell>
+                <TableCell>Sensor</TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell>Condition</TableCell>
                 <TableCell>Severity</TableCell>
@@ -461,12 +602,20 @@ const AlertRulesPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {rules.map((rule) => (
+              {filteredRules.map((rule) => (
                 <TableRow key={rule.alertRuleId} hover>
                   <TableCell>
                     <Typography variant="body2" fontWeight={500}>{rule.ruleName}</Typography>
                     <Typography variant="caption" color="text.secondary">{rule.condition}</Typography>
                   </TableCell>
+                  <TableCell>
+                    {rule.deviceId != null ? (
+                      <Link to={`/devices/${rule.deviceId}`}>{deviceLabel(rule)}</Link>
+                    ) : (
+                      '—'
+                    )}
+                  </TableCell>
+                  <TableCell>{sensorLabel(rule)}</TableCell>
                   <TableCell>
                     <Chip label={rule.ruleType} size="small" variant="outlined" />
                   </TableCell>
@@ -484,7 +633,10 @@ const AlertRulesPage: React.FC = () => {
                       variant={rule.isEnabled ? 'filled' : 'outlined'}
                     />
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                    <IconButton size="small" onClick={() => openView(rule)} title="View">
+                      <ViewIcon fontSize="small" />
+                    </IconButton>
                     {canWrite && (
                       <IconButton size="small" onClick={() => openEdit(rule)} title="Edit">
                         <EditIcon fontSize="small" />
@@ -503,13 +655,70 @@ const AlertRulesPage: React.FC = () => {
         </TableContainer>
       ) : null}
 
+      {/* View dialog */}
+      <Dialog open={viewingRule != null} onClose={() => setViewingRule(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Alert Rule Details</DialogTitle>
+        <DialogContent>
+          {viewingRule && (
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Rule Name</Typography>
+                <Typography variant="body1">{viewingRule.ruleName}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Device / Sensor</Typography>
+                <Typography variant="body2">
+                  {deviceLabel(viewingRule)} · {sensorLabel(viewingRule)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Type & Condition</Typography>
+                <Typography variant="body2">
+                  {viewingRule.ruleType} — {ruleConditionSummary(viewingRule)}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Alert Message</Typography>
+                <Typography variant="body2">{viewingRule.condition}</Typography>
+              </Box>
+              <Stack direction="row" spacing={1}>
+                <Chip label={viewingRule.severity} color={getSeverityColor(viewingRule.severity)} size="small" />
+                <Chip
+                  label={viewingRule.isEnabled ? 'Enabled' : 'Disabled'}
+                  color={viewingRule.isEnabled ? 'success' : 'default'}
+                  size="small"
+                />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                Created: {formatDateTime(viewingRule.createdAt)} · Updated: {formatDateTime(viewingRule.updatedAt)}
+              </Typography>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {canWrite && viewingRule && (
+            <Button
+              onClick={() => {
+                const rule = viewingRule;
+                setViewingRule(null);
+                openEdit(rule);
+              }}
+            >
+              Edit
+            </Button>
+          )}
+          <Button onClick={() => setViewingRule(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Add / Edit Dialog */}
       <Dialog open={formOpen} onClose={closeForm} maxWidth="sm" fullWidth>
         <DialogTitle>
           {editingRule ? 'Edit Alert Rule' : 'Add Alert Rule'}
-          {selectedSensor && (
+          {formContextSensor && (
             <Typography variant="caption" color="text.secondary" display="block">
-              Sensor: {selectedSensor.sensorName} ({selectedSensor.sensorType}{selectedSensor.unit ? `, ${selectedSensor.unit}` : ''})
+              Sensor: {formContextSensor.sensorName} ({formContextSensor.sensorType}
+              {formContextSensor.unit ? `, ${formContextSensor.unit}` : ''})
             </Typography>
           )}
         </DialogTitle>
@@ -517,13 +726,49 @@ const AlertRulesPage: React.FC = () => {
           <Stack spacing={2} sx={{ mt: 1 }}>
             {formError && <MuiAlert severity="error">{formError}</MuiAlert>}
 
+            {needsDialogDeviceSensor && (
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <FormControl fullWidth required size="small">
+                  <InputLabel>Device</InputLabel>
+                  <Select
+                    value={dialogDeviceId}
+                    label="Device"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDialogDeviceId(v === '' ? '' : (v as number));
+                      setDialogSensorId('');
+                    }}
+                  >
+                    {devices.map((d) => (
+                      <MenuItem key={d.deviceId} value={d.deviceId}>{d.deviceName}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth required size="small" disabled={dialogDeviceId === '' || dialogSensorsLoading}>
+                  <InputLabel>Sensor</InputLabel>
+                  <Select
+                    value={dialogSensorId}
+                    label="Sensor"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setDialogSensorId(v === '' ? '' : (v as number));
+                    }}
+                  >
+                    {dialogSensors.map((s) => (
+                      <MenuItem key={s.sensorId} value={s.sensorId}>{s.sensorName}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Stack>
+            )}
+
             <TextField
               label="Rule Name"
               value={form.ruleName}
               onChange={(e) => handleFormChange('ruleName', e.target.value)}
               required
               fullWidth
-              placeholder={`e.g. High Temperature Alert`}
+              placeholder="e.g. High Temperature Alert"
             />
 
             <FormControl fullWidth required>
@@ -544,7 +789,6 @@ const AlertRulesPage: React.FC = () => {
               </FormHelperText>
             </FormControl>
 
-            {/* Threshold fields */}
             {form.ruleType === 'threshold' && (
               <Stack direction="row" spacing={2}>
                 <FormControl sx={{ minWidth: 130 }} required>
@@ -564,12 +808,11 @@ const AlertRulesPage: React.FC = () => {
                   onChange={(e) => handleFormChange('thresholdValue', e.target.value)}
                   required
                   fullWidth
-                  helperText={selectedSensor?.unit ? `Unit: ${selectedSensor.unit}` : undefined}
+                  helperText={formContextSensor?.unit ? `Unit: ${formContextSensor.unit}` : undefined}
                 />
               </Stack>
             )}
 
-            {/* Range fields */}
             {form.ruleType === 'range' && (
               <Stack direction="row" spacing={2}>
                 <TextField
@@ -579,7 +822,7 @@ const AlertRulesPage: React.FC = () => {
                   onChange={(e) => handleFormChange('minValue', e.target.value)}
                   required
                   fullWidth
-                  helperText={`Alert if below this${selectedSensor?.unit ? ` (${selectedSensor.unit})` : ''}`}
+                  helperText={`Alert if below this${formContextSensor?.unit ? ` (${formContextSensor.unit})` : ''}`}
                 />
                 <TextField
                   label="Max Value"
@@ -588,7 +831,7 @@ const AlertRulesPage: React.FC = () => {
                   onChange={(e) => handleFormChange('maxValue', e.target.value)}
                   required
                   fullWidth
-                  helperText={`Alert if above this${selectedSensor?.unit ? ` (${selectedSensor.unit})` : ''}`}
+                  helperText={`Alert if above this${formContextSensor?.unit ? ` (${formContextSensor.unit})` : ''}`}
                 />
               </Stack>
             )}
@@ -613,7 +856,7 @@ const AlertRulesPage: React.FC = () => {
               helperText="This message is shown when the alert fires."
               multiline
               rows={2}
-              placeholder={`e.g. Temperature exceeded safe limit on ${selectedSensor?.sensorName ?? 'sensor'}`}
+              placeholder={`e.g. Temperature exceeded safe limit on ${formContextSensor?.sensorName ?? 'sensor'}`}
             />
 
             <FormControlLabel

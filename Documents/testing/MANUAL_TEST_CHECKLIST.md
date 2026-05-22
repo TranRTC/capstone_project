@@ -37,7 +37,7 @@ Login at `http://localhost:3000/login`
 |---|--------|----------------|------|
 | M5.1 | Login | Valid login → dashboard; bad password → error | ☐ |
 | M5.2 | Dashboard | Device count, active alerts, API / MQTT / SignalR status | ☐ |
-| M5.3 | Devices | Add, edit, delete device; list updates | ☐ |
+| M5.3 | Devices | Add, edit, delete device (succeeds even when device has alerts/rules); list updates | ☐ |
 | M5.4 | Device detail | Chart loads; sensors; breadcrumbs | ☐ |
 | M5.5 | Device detail — sensors | Add/edit sensor via SensorForm | ☐ |
 | M5.6 | Device detail — actuators | Add actuator; control UI | ☐ |
@@ -45,8 +45,8 @@ Login at `http://localhost:3000/login`
 | M5.8 | Device detail — commands | Send command; see feedback / status | ☐ |
 | M5.9 | Sensors page | Cross-device sensor list and CRUD | ☐ |
 | M5.10 | Actuators page | Actuator CRUD | ☐ |
-| M5.11 | Alert rules page | List and manage rules | ☐ |
-| M5.12 | Alerts page | List; acknowledge; resolve | ☐ |
+| M5.11 | Alert rules page | All rules table; optional device/sensor filters; View (all roles); Add/Edit/Delete (Operator+); create without filter uses dialog device/sensor | ☐ |
+| M5.12 | Alerts page | Active/History; acknowledge/resolve Operator+; delete row + bulk (matching / all for device) on History when device selected; Viewer read-only | ☐ |
 | M5.13 | Command history | Filter by status; pagination | ☐ |
 | M5.14 | Users (Admin) | `/users` visible; create/delete if needed | ☐ |
 | M5.15 | Users (non-admin) | Viewer — Users menu hidden / route blocked | ☐ |

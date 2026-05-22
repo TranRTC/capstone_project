@@ -121,6 +121,19 @@ namespace IoTMonitoringSystem.Services
             await _context.SaveChangesAsync();
         }
 
+        public async Task DeleteAlertRulesByDeviceAsync(int deviceId)
+        {
+            var rules = await _context.AlertRules
+                .Where(ar => ar.DeviceId == deviceId)
+                .ToListAsync();
+
+            if (rules.Count == 0)
+                return;
+
+            _context.AlertRules.RemoveRange(rules);
+            await _context.SaveChangesAsync();
+        }
+
         public async Task<List<AlertRuleDto>> GetAlertRulesByDeviceIdAsync(int deviceId)
         {
             var rules = await _context.AlertRules

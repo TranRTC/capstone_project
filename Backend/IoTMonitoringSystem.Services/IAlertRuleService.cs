@@ -9,6 +9,7 @@ namespace IoTMonitoringSystem.Services
         Task<AlertRuleDto> CreateAlertRuleAsync(CreateAlertRuleDto dto);
         Task<AlertRuleDto> UpdateAlertRuleAsync(int alertRuleId, UpdateAlertRuleDto dto);
         Task DeleteAlertRuleAsync(int alertRuleId);
+        Task DeleteAlertRulesByDeviceAsync(int deviceId);
         Task<List<AlertRuleDto>> GetAlertRulesByDeviceIdAsync(int deviceId);
     }
 }

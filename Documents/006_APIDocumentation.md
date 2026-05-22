@@ -1062,6 +1062,62 @@ Host: localhost:5000
 }
 ```
 
+### 6.6 Delete Alert
+
+**Endpoint:** `DELETE /alerts/{id}`
+
+**Description:** Permanently removes one alert record. Requires Admin or Operator role.
+
+**Path Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | long | Yes | Alert ID |
+
+**Request Example:**
+```http
+DELETE /api/v1/alerts/1001 HTTP/1.1
+Host: localhost:5000
+Authorization: Bearer {token}
+```
+
+**Response:** `204 No Content` on success; `404` if not found.
+
+### 6.7 Delete Alerts (bulk)
+
+**Endpoint:** `DELETE /alerts`
+
+**Description:** Deletes all alerts matching query filters. **`deviceId` is required** (prevents deleting the entire table). Optional `status`, `severity`, `startDate`, and `endDate` narrow the set. Requires Admin or Operator role.
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| deviceId | integer | **Yes** | Device scope (required) |
+| status | string | No | e.g. Resolved, Active |
+| severity | string | No | Low, Medium, High, Critical |
+| startDate | datetime | No | Triggered on or after |
+| endDate | datetime | No | Triggered on or before |
+
+**Request Example:**
+```http
+DELETE /api/v1/alerts?deviceId=1&status=Resolved HTTP/1.1
+Host: localhost:5000
+Authorization: Bearer {token}
+```
+
+**Response Example (200 OK):**
+```json
+{
+  "success": true,
+  "message": "3 alert(s) deleted successfully",
+  "data": {
+    "deletedCount": 3
+  },
+  "errors": null
+}
+```
+
+**Note:** Deleting a device (`DELETE /devices/{id}`) automatically removes that device's alerts and alert rules before the device row is deleted.
+
 ## 7. Alert Rules Endpoints
 
 ### 7.1 Get All Alert Rules

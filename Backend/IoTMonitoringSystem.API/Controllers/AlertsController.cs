@@ -136,6 +136,71 @@ namespace IoTMonitoringSystem.API.Controllers
             }
         }
 
+        // DELETE: api/v1/alerts?deviceId= (bulk; deviceId required)
+        [Authorize(Roles = "Admin,Operator")]
+        [HttpDelete]
+        public async Task<ActionResult<ApiResponse<AlertDeleteResultDto>>> DeleteAlertsBulk([FromQuery] AlertQueryDto query)
+        {
+            try
+            {
+                var deletedCount = await _alertService.DeleteAlertsBulkAsync(query);
+                return Ok(new ApiResponse<AlertDeleteResultDto>
+                {
+                    Success = true,
+                    Message = $"{deletedCount} alert(s) deleted successfully",
+                    Data = new AlertDeleteResultDto { DeletedCount = deletedCount }
+                });
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new ApiResponse<AlertDeleteResultDto>
+                {
+                    Success = false,
+                    Message = "Invalid bulk delete request",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<AlertDeleteResultDto>
+                {
+                    Success = false,
+                    Message = "Failed to delete alerts",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        // DELETE: api/v1/alerts/{id}
+        [Authorize(Roles = "Admin,Operator")]
+        [HttpDelete("{id}")]
+        public async Task<ActionResult> DeleteAlert(long id)
+        {
+            try
+            {
+                await _alertService.DeleteAlertAsync(id);
+                return NoContent();
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Alert not found",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new ApiResponse<object>
+                {
+                    Success = false,
+                    Message = "Failed to delete alert",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
         // PUT: api/v1/alerts/{id}/resolve
         [Authorize(Roles = "Admin,Operator")]
         [HttpPut("{id}/resolve")]

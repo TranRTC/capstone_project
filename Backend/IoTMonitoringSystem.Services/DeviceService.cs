@@ -8,10 +8,17 @@ namespace IoTMonitoringSystem.Services
     public class DeviceService : IDeviceService
     {
         private readonly IDeviceRepository _deviceRepository;
+        private readonly IAlertService _alertService;
+        private readonly IAlertRuleService _alertRuleService;
 
-        public DeviceService(IDeviceRepository deviceRepository)
+        public DeviceService(
+            IDeviceRepository deviceRepository,
+            IAlertService alertService,
+            IAlertRuleService alertRuleService)
         {
             _deviceRepository = deviceRepository;
+            _alertService = alertService;
+            _alertRuleService = alertRuleService;
         }
 
         // Returns one device by id. Throws KeyNotFoundException if missing.
@@ -82,13 +89,15 @@ namespace IoTMonitoringSystem.Services
             return MapToDeviceDto(updatedDevice);
         }
 
-        // Deletes by id. Throws KeyNotFoundException if missing.
+        // Deletes by id. Removes alerts and alert rules first (FK Restrict / NoAction). Throws KeyNotFoundException if missing.
         public async Task DeleteDeviceAsync(int deviceId)
         {
             var device = await _deviceRepository.GetByIdAsync(deviceId);
             if (device == null)
                 throw new KeyNotFoundException($"Device with ID {deviceId} not found");
 
+            await _alertService.DeleteAlertsByDeviceAsync(deviceId);
+            await _alertRuleService.DeleteAlertRulesByDeviceAsync(deviceId);
             await _deviceRepository.DeleteAsync(device);
         }
 

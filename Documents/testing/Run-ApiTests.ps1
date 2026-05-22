@@ -151,6 +151,11 @@ if ($deviceId) {
 $r = Try-Request GET "$api/alerts/active" -Headers $auth
 Add-Result "3" "3.4.2" "GET alerts/active" $r.Ok "Status $($r.Status)"
 
+if ($deviceId) {
+    $r = Try-Request DELETE "$api/alerts?deviceId=$deviceId" -Headers $auth -Ok @(200, 204)
+    Add-Result "3" "3.4.3" "DELETE alerts bulk (deviceId)" $r.Ok "Status $($r.Status)"
+}
+
 $r = Try-Request GET "$api/alertrules" -Headers $auth
 Add-Result "3" "3.4.x" "GET alertrules" $r.Ok "Status $($r.Status)"
 

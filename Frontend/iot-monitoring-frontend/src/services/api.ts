@@ -327,6 +327,24 @@ class ApiService {
     return response.data.data;
   }
 
+  async deleteAlert(id: number): Promise<void> {
+    await this.api.delete(`/alerts/${id}`);
+  }
+
+  async deleteAlertsBulk(params: {
+    deviceId: number;
+    status?: string;
+    severity?: string;
+  }): Promise<{ deletedCount: number }> {
+    const response = await this.api.delete<ApiResponse<{ deletedCount: number }>>('/alerts', {
+      params,
+    });
+    if (!response.data.data) {
+      throw new Error(response.data.message || 'Failed to delete alerts');
+    }
+    return response.data.data;
+  }
+
   // Alert Rule endpoints
   async getAlertRules(): Promise<AlertRule[]> {
     const response = await this.api.get<ApiResponse<AlertRule[]>>('/alertrules');

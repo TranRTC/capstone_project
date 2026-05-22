@@ -107,6 +107,34 @@ namespace IoTMonitoringSystem.Services
             if (sensor == null)
                 throw new KeyNotFoundException($"Sensor with ID {sensorId} not found");
 
+            // Auto tests and MQTT ingest create rows that reference SensorId with NoAction FKs.
+            // Remove dependents first so DELETE does not fail with SQL reference constraint errors.
+            var alertRuleIds = await _context.AlertRules
+                .Where(ar => ar.SensorId == sensorId)
+                .Select(ar => ar.AlertRuleId)
+                .ToListAsync();
+
+            if (alertRuleIds.Count > 0)
+            {
+                var alerts = _context.Alerts.Where(a => alertRuleIds.Contains(a.AlertRuleId));
+                _context.Alerts.RemoveRange(alerts);
+            }
+
+            var alertRules = _context.AlertRules.Where(ar => ar.SensorId == sensorId);
+            _context.AlertRules.RemoveRange(alertRules);
+
+            var readings = _context.SensorReadings.Where(sr => sr.SensorId == sensorId);
+            _context.SensorReadings.RemoveRange(readings);
+
+            var actuatorsUsingFeedback = await _context.Actuators
+                .Where(a => a.FeedbackSensorId == sensorId)
+                .ToListAsync();
+            foreach (var actuator in actuatorsUsingFeedback)
+            {
+                actuator.FeedbackSensorId = null;
+                actuator.UpdatedAt = DateTime.UtcNow;
+            }
+
             _context.Sensors.Remove(sensor);
             await _context.SaveChangesAsync();
         }
