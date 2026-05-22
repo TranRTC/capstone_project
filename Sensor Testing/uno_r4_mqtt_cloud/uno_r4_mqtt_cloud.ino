@@ -19,21 +19,27 @@
 #define DHT_PIN 2
 DHT dht(DHT_PIN, DHT11);
 
-// ===================== EDIT CONFIG =====================
+// ===================== WIFI (Arduino only — not in simulator) =====================
 const char* WIFI_SSID     = "trandiep";
 const char* WIFI_PASSWORD = "bingchilling@3614";
 
+// ===================== MQTT — copied from simulator-cloud.py =====================
+// MQTT_HOST, MQTT_PORT, MQTT_USERNAME, MQTT_PASSWORD (lines 48-51)
 const char* MQTT_BROKER   = "d3221e515d824a45849fcffe802de489.s1.eu.hivemq.cloud";
 const int   MQTT_PORT     = 8883;
 const char* MQTT_USER     = "iotuser";
-const char* MQTT_PASS     = "IoTCapstone2026!";  // same as simulator-cloud.py
+const char* MQTT_PASS     = "IoTCapstone2026!";
 
-// Must match device + sensors in CLOUD UI (create there if missing)
-const int DEVICE_ID       = 1026;
-const int SENSOR_TEMP_ID  = 15;
-const int SENSOR_HUM_ID   = 16;
+// Topic pattern (simulator line 82): devices/{DEVICE_ID}/sensors/{SENSOR_ID}/readings
+// Payload (simulator lines 83-86): {"value": <float>} — backend accepts value; timestamp optional
 
-const unsigned long PUBLISH_MS = 1000;
+// ===================== DEVICE / SENSORS — from simulator-cloud.py =====================
+// DEVICE_ID, SENSOR_ID (lines 33-34). Simulator uses one sensor; Arduino adds humidity.
+const int DEVICE_ID       = 1;   // simulator-cloud.py DEVICE_ID
+const int SENSOR_TEMP_ID  = 3;   // simulator-cloud.py SENSOR_ID (temperature)
+const int SENSOR_HUM_ID   = 4;   // second sensor in cloud DB (create in UI if missing)
+
+const unsigned long PUBLISH_MS = 1000;  // simulator default INTERVAL_SECONDS = 5
 // =======================================================
 
 WiFiSSLClient wifiClient;
@@ -114,7 +120,8 @@ bool testTlsToBroker() {
 }
 
 void connectMqtt() {
-  mqttClient.setId("uno_r4_cloud_1026");
+  // simulator client_id pattern: sensor_{DEVICE_ID}_{SENSOR_ID}
+  mqttClient.setId("uno_r4_cloud_1");
   mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASS);
 
   Serial.print("MQTTS -> ");
@@ -140,6 +147,10 @@ void connectMqtt() {
 bool publishReading(const char* topic, float value) {
   char payload[48];
   snprintf(payload, sizeof(payload), "{\"value\":%.2f}", value);
+  Serial.print("  -> ");
+  Serial.print(topic);
+  Serial.print(" ");
+  Serial.println(payload);
   mqttClient.beginMessage(topic, false, 1);
   mqttClient.print(payload);
   bool ok = mqttClient.endMessage() != 0;

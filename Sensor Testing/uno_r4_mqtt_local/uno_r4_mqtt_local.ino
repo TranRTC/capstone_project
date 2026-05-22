@@ -32,9 +32,9 @@ IPAddress mqttHost(
   MQTT_HOST_OCTETS[3]
 );
 
-const int DEVICE_ID       = 1026;
-const int SENSOR_TEMP_ID  = 15;
-const int SENSOR_HUM_ID   = 16;
+const int DEVICE_ID       = 1;
+const int SENSOR_TEMP_ID  = 1;
+const int SENSOR_HUM_ID   = 2;
 
 const unsigned long PUBLISH_MS = 1000;  // publish every 1 s (DHT11 minimum ~1 s between reads)
 // =======================================================

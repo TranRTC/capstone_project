@@ -12,8 +12,8 @@
 | Source | Typical IDs |
 |--------|-------------|
 | Local simulator | sensor **1** |
-| Cloud simulator | sensor **2** |
-| Arduino (real hardware) | temp **3**, humidity **4** on device **1** |
+| Cloud simulator | device **1**, sensor **1** (`simulator-cloud.py`) |
+| Arduino cloud sketch | device **1**, temp **1**, humidity **2** (same broker as simulator) |
 
 Edit `DEVICE_ID` / `SENSOR_TEMP_ID` / `SENSOR_HUM_ID` at the top of each sketch to match your UI.
 
