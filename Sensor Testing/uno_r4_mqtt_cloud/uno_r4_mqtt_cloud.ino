@@ -22,12 +22,11 @@ const int   MQTT_PORT     = 8883;
 const char* MQTT_USER     = "iotuser";
 const char* MQTT_PASS     = "IoTCapstone2026!";
 
-// Match IDs in cloud DB (same order as local after reset: device 1, sensors 1–4)
+// Match IDs in cloud DB (same order as local after reset: device 1, sensors 1–3)
 const int DEVICE_ID       = 1;
 const int SENSOR_TEMP_ID  = 1;
 const int SENSOR_HUM_ID   = 2;
-const int SENSOR_DI1_ID   = 3;
-const int SENSOR_DI2_ID   = 4;
+const int SENSOR_DI1_ID   = 5;
 
 const unsigned long PUBLISH_MS = 1000;
 // =======================================================
@@ -38,7 +37,6 @@ MqttClient mqttClient(wifiClient);
 UnoR4IoConfig ioConfig = {
   DEVICE_ID,
   SENSOR_DI1_ID,
-  SENSOR_DI2_ID,
   0.0f,
   100.0f
 };
@@ -46,7 +44,6 @@ UnoR4IoConfig ioConfig = {
 char topicTemp[64];
 char topicHum[64];
 char topicDi1[64];
-char topicDi2[64];
 char topicCommands[48];
 char topicAck[48];
 
@@ -81,7 +78,7 @@ void buildTopics() {
            "devices/%d/sensors/%d/readings", DEVICE_ID, SENSOR_TEMP_ID);
   snprintf(topicHum, sizeof(topicHum),
            "devices/%d/sensors/%d/readings", DEVICE_ID, SENSOR_HUM_ID);
-  unoR4IoBuildSensorTopics(ioConfig, topicDi1, topicDi2, sizeof(topicDi1));
+  unoR4IoBuildSensorTopicDi1(ioConfig, topicDi1, sizeof(topicDi1));
   unoR4IoBuildCommandTopic(DEVICE_ID, topicCommands, sizeof(topicCommands));
   unoR4IoBuildAckTopic(DEVICE_ID, topicAck, sizeof(topicAck));
 }
@@ -222,5 +219,5 @@ void loop() {
   }
 
   Serial.print("DI ");
-  unoR4IoPublishDigitalInputs(topicDi1, topicDi2, publishReading);
+  unoR4IoPublishDigitalInput(topicDi1, publishReading);
 }

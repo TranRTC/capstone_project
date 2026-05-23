@@ -95,6 +95,10 @@ class SignalRService {
     this.connection?.on('SensorReadingReceived', callback);
   }
 
+  offSensorReading(callback: (reading: SensorReading) => void): void {
+    this.connection?.off('SensorReadingReceived', callback);
+  }
+
   onNewAlert(callback: (alert: Alert) => void): void {
     this.connection?.on('NewAlert', callback);
   }

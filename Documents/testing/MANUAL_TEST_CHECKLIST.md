@@ -39,6 +39,7 @@ Login at `http://localhost:3000/login`
 | M5.2 | Dashboard | Device count, active alerts, API / MQTT / SignalR status | ☐ |
 | M5.3 | Devices | Add, edit, delete device (succeeds even when device has alerts/rules); list updates | ☐ |
 | M5.4 | Device detail | Chart loads; sensors; breadcrumbs | ☐ |
+| M5.4a | Live analog line chart (SCADA-style) | Device detail → analog sensor → **Live readings**: **Live** tab shows window slider + rolling caption only (not on 10m/1h/24h); history tabs show **Range:** label + history hint; **24h** then **Live** → X-axis ~window width (not multi-hour); Y-axis zooms around data (~27 °C) when sensor range is 0–50; line grows right ~1 Hz without morph; close dialog → dashboard SignalR still works | ☐ |
 | M5.5 | Device detail — sensors | Add/edit sensor via SensorForm | ☐ |
 | M5.6 | Device detail — actuators | Add actuator; control UI | ☐ |
 | M5.7 | Device detail — alert rules | Create rule on device page | ☐ |

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Paper,
   Typography,
@@ -20,6 +20,14 @@ import { signalRService } from '../../services/signalRService';
 import RealTimeChart from './RealTimeChart';
 import SensorAnalogGauge from './SensorAnalogGauge';
 import DiscreteSensorIndicator from './DiscreteSensorIndicator';
+import {
+  ChartDataPoint,
+  trimChartPoints,
+  formatRollingWindowLabel,
+  formatHistoryRangeLabel,
+  liveFetchPageSize,
+  computeLineChartYDomain,
+} from './chartTrim';
 import { Sensor, SensorReading } from '../../types';
 import * as signalR from '@microsoft/signalr';
 
@@ -36,11 +44,6 @@ interface DeviceTemperatureChartProps {
   maxDataPoints?: number; // Max data points (used when windowMode='points')
   /** Omit duplicate sensor title on discrete indicator when parent already titles the view (e.g. dialog). */
   hideDiscreteSensorHeading?: boolean;
-}
-
-interface ChartDataPoint {
-  timestamp: string;
-  value: number;
 }
 
 type TrendRange = 'live' | '10m' | '1h' | '24h' | 'custom';
@@ -70,7 +73,17 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   // Zoom state - allow dynamic zoom control
   const [windowMode] = useState<'time' | 'points'>(initialWindowMode);
   const [timeWindowMinutes, setTimeWindowMinutes] = useState(initialTimeWindowMinutes);
-  
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+
+  const trimOptions = useMemo(
+    () => ({
+      windowMode,
+      timeWindowMinutes,
+      maxDataPoints,
+    }),
+    [windowMode, timeWindowMinutes, maxDataPoints]
+  );
+
   // Preset zoom levels (in minutes)
   const zoomPresets = [
     { label: '2s', value: 2 / 60 }, // 2 seconds
@@ -115,11 +128,21 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   }, [deviceId, sensorId]);
 
   // Fetch recent temperature readings
-  const fetchRecentReadings = useCallback(async (sensorId: number, range: TrendRange) => {
+  const fetchRecentReadings = useCallback(async (
+    sensorId: number,
+    range: TrendRange,
+    windowMins: number
+  ) => {
     try {
       const endDate = new Date();
       const startDate = new Date();
-      if (range === '10m' || range === 'live') {
+      let pageSize = 100;
+
+      if (range === 'live' && windowMode === 'time') {
+        const windowMs = windowMins * 60 * 1000 * 1.1;
+        startDate.setTime(endDate.getTime() - windowMs);
+        pageSize = liveFetchPageSize(windowMins);
+      } else if (range === '10m' || range === 'live') {
         startDate.setMinutes(startDate.getMinutes() - 10);
       } else if (range === '1h') {
         startDate.setHours(startDate.getHours() - 1);
@@ -141,21 +164,27 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         sensorId,
         startDate: resolvedStartDate,
         endDate: resolvedEndDate,
-        pageSize: 100, // Get up to 100 recent readings
+        pageSize,
       });
 
       const readings: ChartDataPoint[] = result.items
         .filter((reading) => reading.sensorId === sensorId)
         .map((reading) => ({
+          readingId: reading.readingId,
           timestamp: reading.timestamp,
           value: reading.value,
-        }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        }));
 
-      setChartData(readings);
-      // Set current value to the latest reading
-      if (readings.length > 0) {
-        setCurrentValue(readings[readings.length - 1].value);
+      const applyRollingWindow = range === 'live' && windowMode === 'time';
+      const trimmed = trimChartPoints(
+        readings,
+        { windowMode, timeWindowMinutes: windowMins, maxDataPoints },
+        applyRollingWindow
+      );
+
+      setChartData(trimmed);
+      if (trimmed.length > 0) {
+        setCurrentValue(trimmed[trimmed.length - 1].value);
       } else {
         setCurrentValue(null);
       }
@@ -165,7 +194,32 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       setError('Failed to load sensor readings');
       setLoading(false);
     }
-  }, [deviceId, customWindow]);
+  }, [deviceId, customWindow, windowMode, maxDataPoints]);
+
+  const handleNewReading = useCallback(
+    (reading: SensorReading) => {
+      if (!temperatureSensor) return;
+      if (reading.sensorId !== temperatureSensor.sensorId || reading.deviceId !== deviceId) {
+        return;
+      }
+      setCurrentValue(reading.value);
+      setChartData((prev) =>
+        trimChartPoints(
+          [
+            ...prev,
+            {
+              readingId: reading.readingId,
+              timestamp: reading.timestamp,
+              value: reading.value,
+            },
+          ],
+          trimOptions,
+          true
+        )
+      );
+    },
+    [temperatureSensor, deviceId, trimOptions]
+  );
 
   const applyCenteredWindow = () => {
     if (!centerTimeInput) return;
@@ -186,14 +240,22 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       setError(null);
       const sensor = await fetchTemperatureSensor();
       if (sensor) {
-        await fetchRecentReadings(sensor.sensorId, trendRange);
+        await fetchRecentReadings(sensor.sensorId, trendRange, timeWindowMinutes);
       } else {
         setLoading(false);
       }
     };
 
     initialize();
+    // timeWindowMinutes passed into fetchRecentReadings; slider changes re-trim without refetch
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, sensorId, trendRange, fetchTemperatureSensor, fetchRecentReadings]);
+
+  // Re-trim on window change and every live tick so the trace scrolls left as time advances
+  useEffect(() => {
+    if (trendRange !== 'live' || windowMode !== 'time') return;
+    setChartData((prev) => trimChartPoints(prev, trimOptions, true));
+  }, [liveNow, timeWindowMinutes, trendRange, windowMode, trimOptions]);
 
   // Set up SignalR for real-time updates
   useEffect(() => {
@@ -201,65 +263,14 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
 
     const setupSignalR = async () => {
       try {
-        // Ensure SignalR is connected
         const state = signalRService.getConnectionState();
         if (state !== signalR.HubConnectionState.Connected) {
           await signalRService.start();
         }
 
-        // Subscribe to sensor updates
         await signalRService.subscribeToSensor(temperatureSensor.sensorId);
         await signalRService.subscribeToDevice(deviceId);
-
-        // Listen for new sensor readings
-        const handleNewReading = (reading: SensorReading) => {
-          // Only update if this reading is for our sensor
-          if (reading.sensorId === temperatureSensor.sensorId && reading.deviceId === deviceId) {
-            setCurrentValue(reading.value);
-            setChartData((prev) => {
-              // Add new reading to the end (right side)
-              const newData = [
-                ...prev,
-                {
-                  timestamp: reading.timestamp,
-                  value: reading.value,
-                },
-              ];
-              
-              // Remove duplicates based on timestamp
-              const uniqueData = Array.from(
-                new Map(newData.map(item => [item.timestamp, item])).values()
-              );
-              
-              // Sort by timestamp (oldest first = left, newest last = right)
-              const sortedData = uniqueData.sort(
-                (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-              );
-              
-              // Apply window based on mode
-              if (windowMode === 'time') {
-                // Time-based window (SCADA style): filter by time, no point limit
-                const now = Date.now();
-                const windowMs = timeWindowMinutes * 60 * 1000;
-                return sortedData.filter(
-                  (point) => (now - new Date(point.timestamp).getTime()) <= windowMs
-                );
-              } else {
-                // Points-based window: limit by number of points
-                if (sortedData.length > maxDataPoints) {
-                  // Remove the first (oldest/leftmost) point, keep the last maxDataPoints
-                  return sortedData.slice(-maxDataPoints);
-                }
-                // If not full yet, return all data (will fill from left to right)
-                return sortedData;
-              }
-            });
-          }
-        };
-
         signalRService.onSensorReading(handleNewReading);
-
-        // Cleanup
       } catch (err) {
         console.error('Error setting up SignalR:', err);
       }
@@ -267,9 +278,15 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
 
     setupSignalR();
     return () => {
-      signalRService.off('SensorReadingReceived');
+      signalRService.offSensorReading(handleNewReading);
     };
-  }, [temperatureSensor, deviceId, trendRange, windowMode, timeWindowMinutes, maxDataPoints]);
+  }, [temperatureSensor, deviceId, trendRange, handleNewReading]);
+
+  useEffect(() => {
+    if (trendRange !== 'live') return;
+    const id = window.setInterval(() => setLiveNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [trendRange]);
 
   const signalKindNormalized = temperatureSensor?.signalKind ?? 'analog';
   const isDiscreteSensor = signalKindNormalized === 'discrete';
@@ -282,6 +299,21 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     (chartData.length > 0 ? chartData[chartData.length - 1].value : null);
   const gaugeMin = temperatureSensor?.minValue ?? 0;
   const gaugeMax = temperatureSensor?.maxValue ?? 100;
+  const chartYDomain = useMemo((): [number, number] | undefined => {
+    if (useAnalogGauge || isDiscreteSensor) return undefined;
+    return computeLineChartYDomain(
+      chartData.map((p) => p.value),
+      temperatureSensor?.minValue,
+      temperatureSensor?.maxValue
+    );
+  }, [chartData, temperatureSensor, useAnalogGauge, isDiscreteSensor]);
+
+  const liveXDomain = useMemo((): [number, number] | undefined => {
+    if (trendRange !== 'live' || windowMode !== 'time') return undefined;
+    const xMax = liveNow;
+    const xMin = xMax - timeWindowMinutes * 60 * 1000;
+    return [xMin, xMax];
+  }, [trendRange, windowMode, timeWindowMinutes, liveNow]);
 
   const isAnalogLineVisualization =
     Boolean(temperatureSensor) && !isDiscreteSensor && !useAnalogGauge;
@@ -291,7 +323,12 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   const showAnalogHistoryChrome = chromeReady && !isDiscreteSensor;
   /** 2s–10m presets + slider: only for analog line charts in time mode (not discrete; not gauge-only). */
   const showLiveLineWindowTrim =
-    chromeReady && isAnalogLineVisualization && windowMode === 'time';
+    chromeReady &&
+    isAnalogLineVisualization &&
+    windowMode === 'time' &&
+    trendRange === 'live';
+  const showHistoryRangeHint =
+    chromeReady && isAnalogLineVisualization && trendRange !== 'live';
 
   const content = (
     <>
@@ -306,6 +343,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             <ButtonGroup size="small" variant="outlined">
               <Button
                 onClick={() => {
+                  setChartData([]);
                   setTrendRange('live');
                   setCustomWindow(null);
                 }}
@@ -333,11 +371,13 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
               </Button>
             </ButtonGroup>
             <Typography variant="caption" color="text.secondary" sx={{ mr: 1 }}>
-              {windowMode === 'time'
-                ? timeWindowMinutes < 1
-                  ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s`
-                  : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
-                : `Window: Last ${maxDataPoints} points`}
+              {trendRange === 'live'
+                ? windowMode === 'time'
+                  ? timeWindowMinutes < 1
+                    ? `Window: Last ${(timeWindowMinutes * 60).toFixed(0)}s`
+                    : `Window: Last ${timeWindowMinutes.toFixed(1)}m`
+                  : `Window: Last ${maxDataPoints} points`
+                : `Range: ${formatHistoryRangeLabel(trendRange, aroundMinutes)}`}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
@@ -375,6 +415,11 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
             Mode: {trendRange === 'live' ? 'Live updates' : trendRange === 'custom' ? `History (centered +/- ${aroundMinutes}m)` : `History (${trendRange})`}
           </Typography>
+          {showHistoryRangeHint ? (
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+              Showing all readings in this history range. Switch to Live for a rolling window.
+            </Typography>
+          ) : null}
         </>
       ) : null}
       {showPaper && temperatureSensor ? (
@@ -450,6 +495,9 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
               </IconButton>
             </Tooltip>
           </Box>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+            Showing the last {formatRollingWindowLabel(timeWindowMinutes)}; older points are removed as time advances.
+          </Typography>
         </Box>
       ) : null}
       {/* Current Value Display (analog numeric summary; discrete uses indicator below) */}
@@ -601,7 +649,12 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
           <RealTimeChart
             data={chartData}
             maxDataPoints={maxDataPoints}
-            timeWindowMinutes={windowMode === 'time' ? timeWindowMinutes : undefined}
+            timeWindowMinutes={
+              trendRange !== 'live' && windowMode === 'time' ? timeWindowMinutes : undefined
+            }
+            isLive={trendRange === 'live'}
+            xDomain={liveXDomain}
+            yDomain={chartYDomain}
             name={temperatureSensor?.sensorName ?? 'Sensor'}
             height={height}
             unit={temperatureSensor.unit || ''}

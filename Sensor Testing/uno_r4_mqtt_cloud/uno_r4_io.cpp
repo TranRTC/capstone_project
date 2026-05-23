@@ -85,7 +85,6 @@ static bool pinMatchesChannel(int pin, int channel) {
 
 void unoR4IoBegin() {
   pinMode(IO_PIN_DI1, INPUT_PULLUP);
-  pinMode(IO_PIN_DI2, INPUT_PULLUP);
   pinMode(IO_PIN_DO1, OUTPUT);
   pinMode(IO_PIN_DO2, OUTPUT);
   pinMode(IO_PIN_AO1, OUTPUT);
@@ -94,9 +93,8 @@ void unoR4IoBegin() {
   analogWrite(IO_PIN_AO1, 0);
 }
 
-void unoR4IoBuildSensorTopics(const UnoR4IoConfig& cfg, char* topicDi1, char* topicDi2, size_t len) {
+void unoR4IoBuildSensorTopicDi1(const UnoR4IoConfig& cfg, char* topicDi1, size_t len) {
   snprintf(topicDi1, len, "devices/%d/sensors/%d/readings", cfg.deviceId, cfg.sensorDi1Id);
-  snprintf(topicDi2, len, "devices/%d/sensors/%d/readings", cfg.deviceId, cfg.sensorDi2Id);
 }
 
 void unoR4IoBuildCommandTopic(int deviceId, char* buf, size_t len) {
@@ -107,14 +105,11 @@ void unoR4IoBuildAckTopic(int deviceId, char* buf, size_t len) {
   snprintf(buf, len, "devices/%d/commands/ack", deviceId);
 }
 
-void unoR4IoPublishDigitalInputs(
+void unoR4IoPublishDigitalInput(
   const char* topicDi1,
-  const char* topicDi2,
   bool (*publishReading)(const char* topic, float value)) {
   float di1 = digitalRead(IO_PIN_DI1) == HIGH ? 1.0f : 0.0f;
-  float di2 = digitalRead(IO_PIN_DI2) == HIGH ? 1.0f : 0.0f;
   publishReading(topicDi1, di1);
-  publishReading(topicDi2, di2);
 }
 
 bool unoR4IoHandleCommandJson(

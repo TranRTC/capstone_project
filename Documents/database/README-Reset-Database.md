@@ -24,8 +24,8 @@
 | 1 | Add **one device** | DeviceId = **1** |
 | 2 | Add temp sensor on device 1 | SensorId = **1** |
 | 3 | Add humidity sensor | SensorId = **2** |
-| 4 | Add digital input sensors (discrete) | **3**, **4** |
-| 5 | Add actuators (DO channel 7, 8; AO channel 3) | **1**, **2**, **3** |
+| 4 | Add digital input sensor on pin 4 (discrete) | **3** |
+| 5 | Add actuators (DO channel 7, 5; AO channel 3) | **1**, **2**, **3** |
 
 Then set your Arduino sketch:
 
@@ -34,7 +34,6 @@ const int DEVICE_ID       = 1;
 const int SENSOR_TEMP_ID  = 1;
 const int SENSOR_HUM_ID   = 2;
 const int SENSOR_DI1_ID   = 3;
-const int SENSOR_DI2_ID   = 4;
 ```
 
 Run the same script on **cloud** Azure SQL only if you use a **separate** cloud database (change `USE [IoTMonitoringDB]` if your Azure DB name differs).

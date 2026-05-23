@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useTheme } from '@mui/material/styles';
 import {
   LineChart as RechartsLineChart,
@@ -24,6 +24,12 @@ interface RealTimeChartProps {
   height?: number;
   unit?: string;
   timeWindowMinutes?: number;
+  /** When true, disables line animation (SCADA-style live updates). */
+  isLive?: boolean;
+  /** Fixed Y scale when both bounds are set on the sensor. */
+  yDomain?: [number, number];
+  /** Live rolling window [minMs, maxMs]; overrides dataMin/dataMax on X. */
+  xDomain?: [number, number];
 }
 
 const RealTimeChart: React.FC<RealTimeChartProps> = ({
@@ -34,47 +40,62 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
   height = 300,
   unit = '',
   timeWindowMinutes,
+  isLive = false,
+  yDomain,
+  xDomain,
 }) => {
   const theme = useTheme();
   const lineColor = color ?? theme.palette.primary.main;
-  const [chartData, setChartData] = useState<Array<{ time: string; value: number; timestamp: number }>>([]);
 
-  useEffect(() => {
+  const chartData = useMemo(() => {
     const now = Date.now();
-    const sortedData = [...data]
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-      .map((point) => {
-        const date = new Date(point.timestamp);
-        const timestamp = date.getTime();
-        let timeLabel: string;
-        if (timeWindowMinutes && timeWindowMinutes < 1) {
-          const seconds = date.getSeconds();
-          const minutes = date.getMinutes();
-          timeLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        } else if (timeWindowMinutes && timeWindowMinutes < 5) {
-          const seconds = date.getSeconds();
-          const minutes = date.getMinutes();
-          timeLabel = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        } else {
-          timeLabel = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        }
-        return {
-          time: timeLabel,
-          value: point.value,
-          timestamp,
-        };
-      })
-      .filter((point) => {
-        if (timeWindowMinutes) {
-          const windowMs = timeWindowMinutes * 60 * 1000;
-          return now - point.timestamp <= windowMs;
-        }
-        return true;
-      })
-      .slice(-maxDataPoints);
+    const sorted = [...data].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
 
-    setChartData(sortedData);
-  }, [data, maxDataPoints, timeWindowMinutes]);
+    let filtered = sorted;
+    if (xDomain) {
+      const [xMin, xMax] = xDomain;
+      filtered = sorted.filter((point) => {
+        const t = new Date(point.timestamp).getTime();
+        return t >= xMin && t <= xMax;
+      });
+    } else if (!isLive && timeWindowMinutes) {
+      const windowMs = timeWindowMinutes * 60 * 1000;
+      filtered = sorted.filter(
+        (point) => now - new Date(point.timestamp).getTime() <= windowMs
+      );
+    }
+
+    const limited =
+      !isLive && !timeWindowMinutes && filtered.length > maxDataPoints
+        ? filtered.slice(-maxDataPoints)
+        : filtered;
+
+    return limited.map((point) => ({
+      timestampMs: new Date(point.timestamp).getTime(),
+      value: point.value,
+    }));
+  }, [data, maxDataPoints, timeWindowMinutes, isLive, xDomain]);
+
+  const showSecondsOnAxis =
+    xDomain != null ||
+    (timeWindowMinutes != null && timeWindowMinutes < 5);
+
+  const formatAxisTick = (timestampMs: number) => {
+    const date = new Date(timestampMs);
+    if (showSecondsOnAxis) {
+      return date.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+    }
+    return date.toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const gridColor = theme.palette.divider;
   const axisColor = theme.palette.text.secondary;
@@ -92,11 +113,14 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
           opacity={1}
         />
         <XAxis
-          dataKey="time"
+          type="number"
+          dataKey="timestampMs"
+          scale="time"
+          domain={xDomain ?? ['dataMin', 'dataMax']}
           tick={{ fill: axisColor, fontSize: 11 }}
           tickLine={false}
           axisLine={{ stroke: gridColor }}
-          interval={timeWindowMinutes && timeWindowMinutes < 1 ? 0 : 'preserveStartEnd'}
+          tickFormatter={formatAxisTick}
           dy={6}
         />
         <YAxis
@@ -107,7 +131,7 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
             style: { fill: axisColor, fontSize: 11, fontWeight: 500 },
             offset: 4,
           }}
-          domain={['auto', 'auto']}
+          domain={yDomain ?? ['auto', 'auto']}
           tick={{ fill: axisColor, fontSize: 11 }}
           tickLine={false}
           axisLine={false}
@@ -115,7 +139,13 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
         />
         <Tooltip
           formatter={(value: number) => [`${value.toFixed(2)}${unit ? ` ${unit}` : ''}`, name]}
-          labelFormatter={(label) => label}
+          labelFormatter={(_, payload) => {
+            const row = payload?.[0]?.payload as { timestampMs?: number } | undefined;
+            if (row?.timestampMs != null) {
+              return new Date(row.timestampMs).toLocaleString();
+            }
+            return '';
+          }}
           cursor={{ stroke: gridColor, strokeWidth: 1 }}
           contentStyle={{
             backgroundColor: theme.palette.background.paper,
@@ -136,17 +166,17 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
           )}
         />
         <Line
-          type="monotone"
+          type={isLive ? 'linear' : 'monotone'}
           dataKey="value"
           name={name}
           stroke={lineColor}
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4, strokeWidth: 0, fill: lineColor }}
-          isAnimationActive
-          animationDuration={400}
+          isAnimationActive={!isLive}
+          animationDuration={isLive ? 0 : 400}
           animationEasing="ease-out"
-          connectNulls
+          connectNulls={false}
         />
       </RechartsLineChart>
     </ResponsiveContainer>

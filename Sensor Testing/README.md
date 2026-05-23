@@ -14,9 +14,8 @@
 |-----|------|-------------------|
 | **2** | DHT11 data (temp + humidity) | Analog sensors |
 | **4** | Digital input 1 (`INPUT_PULLUP`) | **Discrete** sensor, value 0/1 |
-| **5** | Digital input 2 | **Discrete** sensor |
+| **5** | Digital output 2 | **Discrete** actuator, **Channel** = `5` |
 | **7** | Digital output 1 | **Discrete** actuator, **Channel** = `7` |
-| **8** | Digital output 2 | **Discrete** actuator, **Channel** = `8` |
 | **3** | Analog output (PWM) | **Analog** actuator, **Channel** = `3`, min 0 max 100 |
 
 Wiring DI: one side to pin, other to **GND** (pressed = 0, released = 1 with pull-up).  
@@ -28,9 +27,9 @@ DO: LED/relay on pin → GND (use series resistor for LED).
 
 | Item | Default ID |
 |------|------------|
-| Device | 1026 |
-| Temp / Hum (DHT11) | 15 / 16 |
-| Digital in 1 / 2 | 17 / 18 |
+| Device | 1 |
+| Temp / Hum (DHT11) | 1 / 2 |
+| Digital in 1 | 3 |
 
 ### Cloud (`uno_r4_mqtt_cloud.ino`)
 
@@ -38,7 +37,7 @@ DO: LED/relay on pin → GND (use series resistor for LED).
 |------|------------|
 | Device | 1 |
 | Temp / Hum | 1 / 2 |
-| Digital in 1 / 2 | 5 / 6 |
+| Digital in 1 | 3 |
 
 ## Dashboard setup (local and cloud)
 
@@ -46,14 +45,14 @@ DO: LED/relay on pin → GND (use series resistor for LED).
 
 1. **Sensors** → Add sensor.
 2. **Signal kind:** Discrete.
-3. Sensor IDs must match `SENSOR_DI1_ID` / `SENSOR_DI2_ID` in the sketch.
+3. Sensor ID must match `SENSOR_DI1_ID` in the sketch (pin 4 only).
 4. View in **Live** mode (0/1 indicator).
 
 ### Digital outputs (on/off)
 
 1. **Actuators** → Add actuator.
 2. **Kind:** Discrete.
-3. **Channel:** `7` or `8` (must match GPIO pin).
+3. **Channel:** `7` or `5` (must match GPIO pin).
 4. **Control** → toggle → sends `SetPower` with `{"on": true/false}`.
 
 ### Analog output (PWM)
