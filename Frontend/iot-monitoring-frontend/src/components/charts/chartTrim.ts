@@ -10,6 +10,9 @@ export interface ChartTrimOptions {
   maxDataPoints: number;
 }
 
+/** Allow readings slightly ahead of client clock so live points are not dropped. */
+export const LIVE_CLOCK_SKEW_MS = 5000;
+
 function dedupeKey(point: ChartDataPoint): number {
   if (point.readingId > 0) {
     return point.readingId;
@@ -36,16 +39,19 @@ export function dedupeChartPoints(points: ChartDataPoint[]): ChartDataPoint[] {
 export function trimChartPoints(
   points: ChartDataPoint[],
   options: ChartTrimOptions,
-  applyRollingWindow = true
+  applyRollingWindow = true,
+  referenceNow = Date.now()
 ): ChartDataPoint[] {
   const sorted = dedupeChartPoints(points);
 
   if (options.windowMode === 'time' && applyRollingWindow) {
-    const now = Date.now();
     const windowMs = options.timeWindowMinutes * 60 * 1000;
-    return sorted.filter(
-      (point) => now - new Date(point.timestamp).getTime() <= windowMs
-    );
+    const xMin = referenceNow - windowMs;
+    return sorted.filter((point) => {
+      const t = new Date(point.timestamp).getTime();
+      if (Number.isNaN(t)) return false;
+      return t >= xMin && t <= referenceNow + LIVE_CLOCK_SKEW_MS;
+    });
   }
 
   if (options.windowMode === 'points') {
@@ -113,6 +119,34 @@ export function computeLineChartYDomain(
   }
 
   return [yMin, yMax];
+}
+
+export function pointsInLiveWindow(
+  points: ChartDataPoint[],
+  windowMinutes: number,
+  referenceNow: number
+): ChartDataPoint[] {
+  const windowMs = windowMinutes * 60 * 1000;
+  const xMin = referenceNow - windowMs;
+  return points.filter((point) => {
+    const t = new Date(point.timestamp).getTime();
+    if (Number.isNaN(t)) return false;
+    return t >= xMin && t <= referenceNow + LIVE_CLOCK_SKEW_MS;
+  });
+}
+
+/** True when the window is full enough to scroll (≥2 in-window points, oldest at left edge). */
+export function isLiveScrollActive(
+  points: ChartDataPoint[],
+  windowMinutes: number,
+  referenceNow: number
+): boolean {
+  const inWindow = pointsInLiveWindow(points, windowMinutes, referenceNow);
+  if (inWindow.length < 2) return false;
+  const windowMs = windowMinutes * 60 * 1000;
+  const xMin = referenceNow - windowMs;
+  const oldest = new Date(inWindow[0].timestamp).getTime();
+  return oldest <= xMin;
 }
 
 export function formatHistoryRangeLabel(

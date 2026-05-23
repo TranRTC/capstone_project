@@ -27,6 +27,7 @@ import {
   formatHistoryRangeLabel,
   liveFetchPageSize,
   computeLineChartYDomain,
+  isLiveScrollActive,
 } from './chartTrim';
 import { Sensor, SensorReading } from '../../types';
 import * as signalR from '@microsoft/signalr';
@@ -179,7 +180,8 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
       const trimmed = trimChartPoints(
         readings,
         { windowMode, timeWindowMinutes: windowMins, maxDataPoints },
-        applyRollingWindow
+        applyRollingWindow,
+        Date.now()
       );
 
       setChartData(trimmed);
@@ -203,6 +205,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
         return;
       }
       setCurrentValue(reading.value);
+      const now = Date.now();
       setChartData((prev) =>
         trimChartPoints(
           [
@@ -214,7 +217,8 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             },
           ],
           trimOptions,
-          true
+          true,
+          now
         )
       );
     },
@@ -254,7 +258,7 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
   // Re-trim on window change and every live tick so the trace scrolls left as time advances
   useEffect(() => {
     if (trendRange !== 'live' || windowMode !== 'time') return;
-    setChartData((prev) => trimChartPoints(prev, trimOptions, true));
+    setChartData((prev) => trimChartPoints(prev, trimOptions, true, liveNow));
   }, [liveNow, timeWindowMinutes, trendRange, windowMode, trimOptions]);
 
   // Set up SignalR for real-time updates
@@ -299,21 +303,55 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
     (chartData.length > 0 ? chartData[chartData.length - 1].value : null);
   const gaugeMin = temperatureSensor?.minValue ?? 0;
   const gaugeMax = temperatureSensor?.maxValue ?? 100;
+  /** Plot series: trimmed buffer + one live tip so the line renders with currentValue. */
+  const chartDataForPlot = useMemo((): ChartDataPoint[] => {
+    if (trendRange !== 'live' || windowMode !== 'time' || currentValue == null) {
+      return chartData;
+    }
+    const buffered = chartData.filter((p) => p.readingId !== -1);
+    const last = buffered[buffered.length - 1];
+    const lastMs = last ? new Date(last.timestamp).getTime() : 0;
+    if (
+      last &&
+      !Number.isNaN(lastMs) &&
+      lastMs >= liveNow - 2000 &&
+      last.value === currentValue
+    ) {
+      return buffered;
+    }
+    return [
+      ...buffered,
+      {
+        readingId: -1,
+        timestamp: new Date(liveNow).toISOString(),
+        value: currentValue,
+      },
+    ];
+  }, [chartData, trendRange, windowMode, currentValue, liveNow]);
+
   const chartYDomain = useMemo((): [number, number] | undefined => {
     if (useAnalogGauge || isDiscreteSensor) return undefined;
     return computeLineChartYDomain(
-      chartData.map((p) => p.value),
+      chartDataForPlot.map((p) => p.value),
       temperatureSensor?.minValue,
       temperatureSensor?.maxValue
     );
-  }, [chartData, temperatureSensor, useAnalogGauge, isDiscreteSensor]);
+  }, [chartDataForPlot, temperatureSensor, useAnalogGauge, isDiscreteSensor]);
 
   const liveXDomain = useMemo((): [number, number] | undefined => {
     if (trendRange !== 'live' || windowMode !== 'time') return undefined;
-    const xMax = liveNow;
-    const xMin = xMax - timeWindowMinutes * 60 * 1000;
-    return [xMin, xMax];
+    const windowMs = timeWindowMinutes * 60 * 1000;
+    return [liveNow - windowMs, liveNow];
   }, [trendRange, windowMode, timeWindowMinutes, liveNow]);
+
+  /** Fixed time axis + drop-left once oldest point hits the left edge of the window. */
+  const liveScrollActive = useMemo(
+    () =>
+      trendRange === 'live' &&
+      windowMode === 'time' &&
+      isLiveScrollActive(chartData, timeWindowMinutes, liveNow),
+    [chartData, trendRange, windowMode, timeWindowMinutes, liveNow]
+  );
 
   const isAnalogLineVisualization =
     Boolean(temperatureSensor) && !isDiscreteSensor && !useAnalogGauge;
@@ -496,7 +534,9 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
             </Tooltip>
           </Box>
           <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-            Showing the last {formatRollingWindowLabel(timeWindowMinutes)}; older points are removed as time advances.
+            {liveScrollActive
+              ? `Scrolling window (last ${formatRollingWindowLabel(timeWindowMinutes)}): new points on the right, oldest dropped on the left.`
+              : `Filling window (last ${formatRollingWindowLabel(timeWindowMinutes)}): points connect on the right until the trace reaches the left edge, then scroll begins.`}
           </Typography>
         </Box>
       ) : null}
@@ -647,13 +687,18 @@ const DeviceTemperatureChart: React.FC<DeviceTemperatureChartProps> = ({
           }}
         >
           <RealTimeChart
-            data={chartData}
+            data={chartDataForPlot}
             maxDataPoints={maxDataPoints}
             timeWindowMinutes={
-              trendRange !== 'live' && windowMode === 'time' ? timeWindowMinutes : undefined
+              trendRange === 'live' && windowMode === 'time'
+                ? undefined
+                : windowMode === 'time'
+                  ? timeWindowMinutes
+                  : undefined
             }
             isLive={trendRange === 'live'}
-            xDomain={liveXDomain}
+            referenceNow={trendRange === 'live' ? liveNow : undefined}
+            xDomain={liveScrollActive ? liveXDomain : undefined}
             yDomain={chartYDomain}
             name={temperatureSensor?.sensorName ?? 'Sensor'}
             height={height}

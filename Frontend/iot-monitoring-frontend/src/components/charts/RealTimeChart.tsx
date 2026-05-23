@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { LIVE_CLOCK_SKEW_MS } from './chartTrim';
 import { useTheme } from '@mui/material/styles';
 import {
   LineChart as RechartsLineChart,
@@ -28,8 +29,10 @@ interface RealTimeChartProps {
   isLive?: boolean;
   /** Fixed Y scale when both bounds are set on the sensor. */
   yDomain?: [number, number];
-  /** Live rolling window [minMs, maxMs]; overrides dataMin/dataMax on X. */
+  /** Fixed live time window [minMs, maxMs] — SCADA scroll once the window is full. */
   xDomain?: [number, number];
+  /** Client "now" for live filtering (align with parent trim). */
+  referenceNow?: number;
 }
 
 const RealTimeChart: React.FC<RealTimeChartProps> = ({
@@ -43,12 +46,13 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
   isLive = false,
   yDomain,
   xDomain,
+  referenceNow,
 }) => {
   const theme = useTheme();
   const lineColor = color ?? theme.palette.primary.main;
 
   const chartData = useMemo(() => {
-    const now = Date.now();
+    const now = referenceNow ?? Date.now();
     const sorted = [...data].sort(
       (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
@@ -58,13 +62,17 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
       const [xMin, xMax] = xDomain;
       filtered = sorted.filter((point) => {
         const t = new Date(point.timestamp).getTime();
-        return t >= xMin && t <= xMax;
+        if (Number.isNaN(t)) return false;
+        return t >= xMin && t <= xMax + LIVE_CLOCK_SKEW_MS;
       });
-    } else if (!isLive && timeWindowMinutes) {
+    } else if (timeWindowMinutes) {
       const windowMs = timeWindowMinutes * 60 * 1000;
-      filtered = sorted.filter(
-        (point) => now - new Date(point.timestamp).getTime() <= windowMs
-      );
+      const xMin = now - windowMs;
+      filtered = sorted.filter((point) => {
+        const t = new Date(point.timestamp).getTime();
+        if (Number.isNaN(t)) return false;
+        return t >= xMin && t <= now;
+      });
     }
 
     const limited =
@@ -76,11 +84,21 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
       timestampMs: new Date(point.timestamp).getTime(),
       value: point.value,
     }));
-  }, [data, maxDataPoints, timeWindowMinutes, isLive, xDomain]);
+  }, [data, maxDataPoints, timeWindowMinutes, isLive, xDomain, referenceNow]);
+
+  type XAxisDomain = [number, number] | ['dataMin', 'dataMax'];
+
+  const xAxisDomain = useMemo((): XAxisDomain => {
+    if (xDomain) return xDomain;
+    if (isLive && chartData.length === 1) {
+      const t = chartData[0].timestampMs;
+      return [t - 30_000, t + 5_000];
+    }
+    return ['dataMin', 'dataMax'];
+  }, [xDomain, isLive, chartData]);
 
   const showSecondsOnAxis =
-    xDomain != null ||
-    (timeWindowMinutes != null && timeWindowMinutes < 5);
+    timeWindowMinutes != null && timeWindowMinutes < 5;
 
   const formatAxisTick = (timestampMs: number) => {
     const date = new Date(timestampMs);
@@ -116,7 +134,8 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
           type="number"
           dataKey="timestampMs"
           scale="time"
-          domain={xDomain ?? ['dataMin', 'dataMax']}
+          domain={xAxisDomain}
+          allowDataOverflow={false}
           tick={{ fill: axisColor, fontSize: 11 }}
           tickLine={false}
           axisLine={{ stroke: gridColor }}
@@ -171,7 +190,7 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
           name={name}
           stroke={lineColor}
           strokeWidth={2}
-          dot={false}
+          dot={chartData.length < 2 ? { r: 3, fill: lineColor, strokeWidth: 0 } : false}
           activeDot={{ r: 4, strokeWidth: 0, fill: lineColor }}
           isAnimationActive={!isLive}
           animationDuration={isLive ? 0 : 400}
