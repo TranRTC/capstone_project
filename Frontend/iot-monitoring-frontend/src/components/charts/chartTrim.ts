@@ -13,6 +13,19 @@ export interface ChartTrimOptions {
 /** Allow readings slightly ahead of client clock so live points are not dropped. */
 export const LIVE_CLOCK_SKEW_MS = 5000;
 
+/** API/SQL timestamps are UTC; ISO strings without an offset must not be parsed as local time. */
+export function parseApiTimestampMs(timestamp: string): number {
+  const trimmed = timestamp.trim();
+  if (!trimmed) return NaN;
+  if (/[Zz]$/.test(trimmed) || /[+-]\d{2}:\d{2}$/.test(trimmed)) {
+    return new Date(trimmed).getTime();
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return new Date(`${trimmed}T00:00:00Z`).getTime();
+  }
+  return new Date(`${trimmed}Z`).getTime();
+}
+
 function dedupeKey(point: ChartDataPoint): number {
   if (point.readingId > 0) {
     return point.readingId;
@@ -31,7 +44,7 @@ export function dedupeChartPoints(points: ChartDataPoint[]): ChartDataPoint[] {
     map.set(dedupeKey(point), point);
   }
   return Array.from(map.values()).sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    (a, b) => parseApiTimestampMs(a.timestamp) - parseApiTimestampMs(b.timestamp)
   );
 }
 
@@ -48,7 +61,7 @@ export function trimChartPoints(
     const windowMs = options.timeWindowMinutes * 60 * 1000;
     const xMin = referenceNow - windowMs;
     return sorted.filter((point) => {
-      const t = new Date(point.timestamp).getTime();
+      const t = parseApiTimestampMs(point.timestamp);
       if (Number.isNaN(t)) return false;
       return t >= xMin && t <= referenceNow + LIVE_CLOCK_SKEW_MS;
     });
@@ -76,6 +89,24 @@ export function formatRollingWindowLabel(timeWindowMinutes: number): string {
 export function liveFetchPageSize(timeWindowMinutes: number): number {
   const expectedSamples = Math.ceil(timeWindowMinutes * 60 * 1.2);
   return Math.min(500, Math.max(50, expectedSamples));
+}
+
+const HISTORY_PAGE_SIZE_CAP = 5000;
+
+export { HISTORY_PAGE_SIZE_CAP };
+
+/** Page size for history API fetch (~1 Hz assumed). Capped to avoid huge responses. */
+export function historyPageSize(
+  range: '10m' | '1h' | '24h' | 'custom',
+  aroundMinutes?: number
+): number {
+  if (range === '10m') return Math.min(HISTORY_PAGE_SIZE_CAP, 600);
+  if (range === '1h') return Math.min(HISTORY_PAGE_SIZE_CAP, 3600);
+  if (range === '24h') return HISTORY_PAGE_SIZE_CAP;
+  if (range === 'custom' && aroundMinutes != null) {
+    return Math.min(HISTORY_PAGE_SIZE_CAP, Math.ceil(aroundMinutes * 2 * 60 * 1.2));
+  }
+  return 100;
 }
 
 /** Y-axis for line chart: zoom to data when sensor min/max is much wider than readings. */
@@ -106,12 +137,13 @@ export function computeLineChartYDomain(
   if (sensorMin != null && sensorMax != null) {
     const sMin = Number(sensorMin);
     const sMax = Number(sensorMax);
+    const dataFitsInSensorBand = dataMin >= sMin && dataMax <= sMax;
     const sensorSpan = sMax - sMin;
-    if (sensorSpan <= 3 * dataSpan) {
+    if (dataFitsInSensorBand && sensorSpan <= 3 * dataSpan) {
       return [sMin, sMax];
     }
-    yMin = Math.max(sMin, yMin);
-    yMax = Math.min(sMax, yMax);
+    yMin = Math.min(sMin, yMin);
+    yMax = Math.max(sMax, yMax);
     if (yMax <= yMin) {
       return [sMin, sMax];
     }
@@ -129,7 +161,7 @@ export function pointsInLiveWindow(
   const windowMs = windowMinutes * 60 * 1000;
   const xMin = referenceNow - windowMs;
   return points.filter((point) => {
-    const t = new Date(point.timestamp).getTime();
+    const t = parseApiTimestampMs(point.timestamp);
     if (Number.isNaN(t)) return false;
     return t >= xMin && t <= referenceNow + LIVE_CLOCK_SKEW_MS;
   });
@@ -145,7 +177,7 @@ export function isLiveScrollActive(
   if (inWindow.length < 2) return false;
   const windowMs = windowMinutes * 60 * 1000;
   const xMin = referenceNow - windowMs;
-  const oldest = new Date(inWindow[0].timestamp).getTime();
+  const oldest = parseApiTimestampMs(inWindow[0].timestamp);
   return oldest <= xMin;
 }
 

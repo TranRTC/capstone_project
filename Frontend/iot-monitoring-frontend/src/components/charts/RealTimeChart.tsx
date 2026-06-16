@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { LIVE_CLOCK_SKEW_MS } from './chartTrim';
+import { LIVE_CLOCK_SKEW_MS, parseApiTimestampMs } from './chartTrim';
 import { useTheme } from '@mui/material/styles';
 import {
   LineChart as RechartsLineChart,
@@ -54,14 +54,15 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
   const chartData = useMemo(() => {
     const now = referenceNow ?? Date.now();
     const sorted = [...data].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      (a, b) => parseApiTimestampMs(a.timestamp) - parseApiTimestampMs(b.timestamp)
     );
 
     let filtered = sorted;
-    if (xDomain) {
+    // History ranges are already scoped by the API — only clip to xDomain during live scroll.
+    if (xDomain && isLive) {
       const [xMin, xMax] = xDomain;
       filtered = sorted.filter((point) => {
-        const t = new Date(point.timestamp).getTime();
+        const t = parseApiTimestampMs(point.timestamp);
         if (Number.isNaN(t)) return false;
         return t >= xMin && t <= xMax + LIVE_CLOCK_SKEW_MS;
       });
@@ -69,7 +70,7 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
       const windowMs = timeWindowMinutes * 60 * 1000;
       const xMin = now - windowMs;
       filtered = sorted.filter((point) => {
-        const t = new Date(point.timestamp).getTime();
+        const t = parseApiTimestampMs(point.timestamp);
         if (Number.isNaN(t)) return false;
         return t >= xMin && t <= now;
       });
@@ -81,7 +82,7 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
         : filtered;
 
     return limited.map((point) => ({
-      timestampMs: new Date(point.timestamp).getTime(),
+      timestampMs: parseApiTimestampMs(point.timestamp),
       value: point.value,
     }));
   }, [data, maxDataPoints, timeWindowMinutes, isLive, xDomain, referenceNow]);
@@ -89,6 +90,15 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
   type XAxisDomain = [number, number] | ['dataMin', 'dataMax'];
 
   const xAxisDomain = useMemo((): XAxisDomain => {
+    if (xDomain && isLive) return xDomain;
+    // History: use the fetched window so points spread across the full 10m/1h/24h axis.
+    if (!isLive && xDomain) return xDomain;
+    if (!isLive && chartData.length > 0) {
+      const dataMin = Math.min(...chartData.map((p) => p.timestampMs));
+      const dataMax = Math.max(...chartData.map((p) => p.timestampMs));
+      const pad = 3000;
+      return [dataMin - pad, dataMax + pad];
+    }
     if (xDomain) return xDomain;
     if (isLive && chartData.length === 1) {
       const t = chartData[0].timestampMs;
@@ -192,8 +202,8 @@ const RealTimeChart: React.FC<RealTimeChartProps> = ({
           strokeWidth={2}
           dot={chartData.length < 2 ? { r: 3, fill: lineColor, strokeWidth: 0 } : false}
           activeDot={{ r: 4, strokeWidth: 0, fill: lineColor }}
-          isAnimationActive={!isLive}
-          animationDuration={isLive ? 0 : 400}
+          isAnimationActive={false}
+          animationDuration={0}
           animationEasing="ease-out"
           connectNulls={false}
         />

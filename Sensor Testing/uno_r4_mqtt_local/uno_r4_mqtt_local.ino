@@ -24,7 +24,7 @@ DHT dht(DHT_PIN, DHT11);
 const char* WIFI_SSID     = "trandiep";
 const char* WIFI_PASSWORD = "bingchilling@3614";
 
-const int MQTT_HOST_OCTETS[] = { 192, 168, 0, 112 };
+const int MQTT_HOST_OCTETS[] = { 192, 168, 0, 118 };
 const int   MQTT_PORT        = 1883;
 
 IPAddress mqttHost(
