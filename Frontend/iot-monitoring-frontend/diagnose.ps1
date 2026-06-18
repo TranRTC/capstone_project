@@ -101,6 +101,6 @@ Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Check browser console (F12) for JavaScript errors" -ForegroundColor White
 Write-Host "  2. Check terminal where 'npm start' is running" -ForegroundColor White
 Write-Host "  3. Try hard refresh: Ctrl+F5" -ForegroundColor White
-Write-Host "  4. Check if backend is running: http://localhost:5286/swagger" -ForegroundColor White
+Write-Host "  4. Check if backend is running: http://localhost:5000/swagger" -ForegroundColor White
 Write-Host ""
 

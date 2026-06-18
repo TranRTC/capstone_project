@@ -50,11 +50,11 @@ if (-not (Test-Path "node_modules")) {
 # Check if backend is running
 Write-Host "Checking backend API..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:5286/swagger" -Method Get -TimeoutSec 2 -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "http://localhost:5000/swagger" -Method Get -TimeoutSec 2 -ErrorAction Stop
     Write-Host "✅ Backend API is running" -ForegroundColor Green
     Write-Host ""
 } catch {
-    Write-Host "⚠️  Backend API not detected at http://localhost:5286" -ForegroundColor Yellow
+    Write-Host "⚠️  Backend API not detected at http://localhost:5000" -ForegroundColor Yellow
     Write-Host "   Make sure the backend is running before using the frontend" -ForegroundColor Yellow
     Write-Host ""
 }

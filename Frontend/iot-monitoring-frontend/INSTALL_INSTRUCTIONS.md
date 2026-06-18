@@ -38,9 +38,8 @@
 
 ## Important Notes
 
-- **Backend API must be running** on http://localhost:5286
-- The frontend is configured to connect to the API at that address
-- If your API runs on a different port, update `src/services/api.ts`
+- **Backend API must be running** on http://localhost:5000
+- The frontend reads API and SignalR URLs from `src/config/runtimeConfig.ts` (env vars `REACT_APP_API_BASE_URL` and `REACT_APP_SIGNALR_HUB_URL` override defaults)
 
 ## Troubleshooting
 
@@ -52,9 +51,9 @@ npm start
 ```
 
 ### Cannot connect to API
-- Verify backend API is running: http://localhost:5286/swagger
+- Verify backend API is running: http://localhost:5000/swagger
 - Check CORS settings in backend `Program.cs`
-- Verify API URL in `src/services/api.ts`
+- Verify API URL in `src/config/runtimeConfig.ts` or set `REACT_APP_API_BASE_URL`
 
 ### Module not found errors
 ```powershell
