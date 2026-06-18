@@ -3,7 +3,7 @@
 A browser-based dashboard for monitoring IoT equipment in real time—collecting sensor data over MQTT, storing history in SQL Server, pushing live updates via SignalR, and sending device commands back to the edge.
 
 **Capstone project** — BAS Application Development Program  
-**Student:** Quoc Bao Tran · **Instructor:** Naser Chowdhury  
+**Developed By:** Quoc Bao Tran
 **Status:** As-built (May 2026)
 
 ---
