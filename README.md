@@ -52,6 +52,7 @@ flowchart LR
 - **Device control** — Commands over MQTT (`SetPower`, `SetValue`); command history page
 - **Security** — JWT authentication with **Admin**, **Operator** (read/write), and **Viewer** (read-only) roles
 - **MQTT pipeline** — Ingest readings, publish commands, health metrics endpoint
+- **AI assistant (v1)** — Chat over live devices, alerts, readings, and system health via tool calling
 
 ---
 
@@ -197,6 +198,64 @@ Deployed via GitHub Actions on push to `main`:
 | Swagger | https://capstoneiotdashboard-gudbg0amfxeehae5.westus-01.azurewebsites.net/swagger |
 
 Cloud pipeline check: `Sensor Testing/Check-CloudPipeline.ps1`
+
+---
+
+## AI Assistant (v1 chat + v2 proactive)
+
+Open **Assistant** in the sidebar (`/assistant`) to ask questions about live monitoring data or review **proactive insights** generated automatically when the system detects issues.
+
+### v1 — On-demand chat
+
+Example questions:
+- "List all devices"
+- "Any active alerts?"
+- "Recent readings for device 1"
+- "Is MQTT connected?"
+
+### v2 — Proactive monitoring
+
+The backend watches for:
+- **New active alerts** (after alert rules fire)
+- **Offline devices** (no readings within configured minutes)
+- **MQTT pipeline issues** (broker disconnected)
+
+Insights appear in the Assistant feed and via SignalR (`AgentInsightCreated`). Each insight includes a summary, suggested next steps, dismiss, and **Ask follow-up** (opens v1 chat with context).
+
+Configure in `Agent:Proactive` (see `appsettings.json`):
+- `Enabled`, `DeviceOfflineMinutes`, `MqttUnhealthyMinutes`, `SweepIntervalSeconds`
+- `InsightCooldownMinutes`, `MaxInsightsPerHour`
+
+v2 remains **read-only** (no device creation or commands via AI). Writes are planned for v3.
+
+### Local development — Ollama (free)
+
+Development defaults in `appsettings.Development.json` use **Ollama** on `http://localhost:11434/v1` with model `llama3.2`.
+
+1. Install [Ollama](https://ollama.com)
+2. Pull the model:
+   ```powershell
+   ollama pull llama3.2
+   ```
+3. Ensure Ollama is running (it usually starts with Windows; or run `ollama serve`)
+4. Restart the backend API (`ASPNETCORE_ENVIRONMENT=Development`)
+
+No cloud API key required for local dev.
+
+### Production / cloud LLM (optional)
+
+For Azure or OpenAI instead of Ollama, set in App Service or user-secrets:
+
+```powershell
+cd Backend/IoTMonitoringSystem.API
+dotnet user-secrets set "Agent:Llm:ApiKey" "YOUR_OPENAI_API_KEY"
+dotnet user-secrets set "Agent:Llm:BaseUrl" "https://api.openai.com/v1"
+dotnet user-secrets set "Agent:Model" "gpt-4o-mini"
+```
+
+Or use **Groq** (free tier): `Agent:Llm:BaseUrl` = `https://api.groq.com/openai/v1`
+
+Restart the API after changing LLM settings.
 
 ---
 

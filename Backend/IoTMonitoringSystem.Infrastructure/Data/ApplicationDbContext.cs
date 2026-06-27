@@ -21,6 +21,7 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<DeviceCommand> DeviceCommands { get; set; }
         public DbSet<Actuator> Actuators { get; set; }
         public DbSet<User> Users { get; set; }
+        public DbSet<AgentInsight> AgentInsights { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -145,6 +146,12 @@ namespace IoTMonitoringSystem.Infrastructure.Data
                 .HasIndex(d => d.EdgeDeviceId)
                 .IsUnique()
                 .HasFilter("[EdgeDeviceId] IS NOT NULL");
+
+            modelBuilder.Entity<AgentInsight>()
+                .HasIndex(i => new { i.Status, i.CreatedAt });
+
+            modelBuilder.Entity<AgentInsight>()
+                .HasIndex(i => i.DedupeKey);
         }
     }
 }

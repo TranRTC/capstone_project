@@ -41,6 +41,12 @@ namespace IoTMonitoringSystem.API.Hubs
             await Clients.Caller.SendAsync("Subscribed", "Subscribed to alerts");
         }
 
+        public async Task SubscribeToAgentInsights()
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, "agent_insights");
+            await Clients.Caller.SendAsync("Subscribed", "Subscribed to agent insights");
+        }
+
         public override async Task OnConnectedAsync()
         {
             await base.OnConnectedAsync();

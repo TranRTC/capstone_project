@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr';
 import { SensorReading, Alert } from '../types';
+import type { AgentInsight } from './agentService';
 import { runtimeConfig } from '../config/runtimeConfig';
 
 class SignalRService {
@@ -90,6 +91,12 @@ class SignalRService {
     }
   }
 
+  async subscribeToAgentInsights(): Promise<void> {
+    if (this.connection?.state === signalR.HubConnectionState.Connected) {
+      await this.connection.invoke('SubscribeToAgentInsights');
+    }
+  }
+
   // Event handlers
   onSensorReading(callback: (reading: SensorReading) => void): void {
     this.connection?.on('SensorReadingReceived', callback);
@@ -113,6 +120,14 @@ class SignalRService {
 
   onDeviceStatusChanged(callback: (status: any) => void): void {
     this.connection?.on('DeviceStatusChanged', callback);
+  }
+
+  onAgentInsightCreated(callback: (insight: AgentInsight) => void): void {
+    this.connection?.on('AgentInsightCreated', callback);
+  }
+
+  offAgentInsightCreated(callback: (insight: AgentInsight) => void): void {
+    this.connection?.off('AgentInsightCreated', callback);
   }
 
   onReconnecting(callback: (error?: Error) => void): void {

@@ -46,6 +46,7 @@ builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddScoped<IDeviceCommandRepository, DeviceCommandRepository>();
 builder.Services.AddScoped<IDeviceConfigurationRepository, DeviceConfigurationRepository>();
 builder.Services.AddScoped<IActuatorRepository, ActuatorRepository>();
+builder.Services.AddScoped<IAgentInsightRepository, AgentInsightRepository>();
 
 // Notification Service (SignalR)
 builder.Services.AddScoped<INotificationService, SignalRNotificationService>();
@@ -63,6 +64,15 @@ builder.Services.AddScoped<IActuatorService, ActuatorService>();
 
 // Auth service
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// AI assistant (v1 chat + v2 proactive)
+builder.Services.AddHttpClient<ILlmClient, LlmClient>();
+builder.Services.AddScoped<AgentToolExecutor>();
+builder.Services.AddScoped<IAgentService, AgentService>();
+builder.Services.AddSingleton<AgentTriggerGate>();
+builder.Services.AddScoped<IProactiveAgentService, ProactiveAgentService>();
+builder.Services.AddScoped<IAgentAlertHandler, AgentAlertEventHandler>();
+builder.Services.AddHostedService<AgentMonitoringBackgroundService>();
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]

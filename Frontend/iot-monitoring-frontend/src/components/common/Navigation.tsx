@@ -12,6 +12,7 @@ import {
   Logout as LogoutIcon,
   Person as PersonIcon,
   ManageAccounts as ManageAccountsIcon,
+  SmartToy as SmartToyIcon,
 } from '@mui/icons-material';
 import authService from '../../services/authService';
 
@@ -30,6 +31,7 @@ const Navigation: React.FC = () => {
     { path: '/alert-rules', label: 'Alert Rules', icon: <RuleIcon />, adminOnly: false },
     { path: '/alerts', label: 'Alerts', icon: <NotificationsIcon />, adminOnly: false },
     { path: '/command-history', label: 'Commands', icon: <HistoryIcon />, adminOnly: false },
+    { path: '/assistant', label: 'Assistant', icon: <SmartToyIcon />, adminOnly: false },
     { path: '/users', label: 'Users', icon: <ManageAccountsIcon />, adminOnly: true },
   ].filter((item) => !item.adminOnly || isAdmin);
 

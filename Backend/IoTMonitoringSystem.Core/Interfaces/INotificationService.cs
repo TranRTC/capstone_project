@@ -10,6 +10,7 @@ namespace IoTMonitoringSystem.Core.Interfaces
         Task NotifyAlertUpdatedAsync(AlertDto alert);
         Task NotifySensorReadingAsync(SensorReadingDto reading);
         Task NotifyDeviceStatusChangedAsync(DeviceStatusDto status);
+        Task NotifyAgentInsightAsync(AgentInsightDto insight);
     }
 }
 

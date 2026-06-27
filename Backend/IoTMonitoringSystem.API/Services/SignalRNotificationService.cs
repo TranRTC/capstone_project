@@ -58,5 +58,10 @@ namespace IoTMonitoringSystem.API.Services
             await _hubContext.Clients.Group($"device_{status.DeviceId}").SendAsync("DeviceStatusChanged", status);
             await _hubContext.Clients.Group("all_devices").SendAsync("DeviceStatusChanged", status);
         }
+
+        public async Task NotifyAgentInsightAsync(AgentInsightDto insight)
+        {
+            await _hubContext.Clients.Group("agent_insights").SendAsync("AgentInsightCreated", insight);
+        }
     }
 }

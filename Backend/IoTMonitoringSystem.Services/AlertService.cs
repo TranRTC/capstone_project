@@ -4,6 +4,7 @@ using IoTMonitoringSystem.Core.Interfaces;
 using IoTMonitoringSystem.Infrastructure.Data;
 using IoTMonitoringSystem.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace IoTMonitoringSystem.Services
 {
@@ -12,15 +13,18 @@ namespace IoTMonitoringSystem.Services
         private readonly ApplicationDbContext _context;
         private readonly IAlertRepository _alertRepository;
         private readonly INotificationService? _notificationService;
+        private readonly IServiceScopeFactory? _scopeFactory;
 
         public AlertService(
             ApplicationDbContext context,
             IAlertRepository alertRepository,
-            INotificationService? notificationService = null)
+            INotificationService? notificationService = null,
+            IServiceScopeFactory? scopeFactory = null)
         {
             _context = context;
             _alertRepository = alertRepository;
             _notificationService = notificationService;
+            _scopeFactory = scopeFactory;
         }
 
         public async Task<List<AlertDto>> GetActiveAlertsAsync()
@@ -290,6 +294,19 @@ namespace IoTMonitoringSystem.Services
             // Notify via SignalR
             if (_notificationService != null)
                 await _notificationService.NotifyNewAlertAsync(alertDto);
+
+            await NotifyProactiveAgentAsync(alertDto);
+        }
+
+        private async Task NotifyProactiveAgentAsync(AlertDto alertDto)
+        {
+            if (_scopeFactory is null)
+                return;
+
+            using var scope = _scopeFactory.CreateScope();
+            var handler = scope.ServiceProvider.GetService<IAgentAlertHandler>();
+            if (handler is not null)
+                await handler.OnAlertCreatedAsync(alertDto);
         }
 
         private AlertDto MapToAlertDto(Alert alert)
