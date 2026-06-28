@@ -24,5 +24,7 @@ namespace IoTMonitoringSystem.Core.DTOs
     {
         public string Reply { get; set; } = string.Empty;
         public List<string> ToolsUsed { get; set; } = new();
+        public List<string> DocSourcesUsed { get; set; } = new();
+        public AgentActionProposalDto? PendingAction { get; set; }
     }
 }

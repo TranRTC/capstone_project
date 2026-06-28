@@ -15,6 +15,8 @@ namespace IoTMonitoringSystem.API.Services
         Task<AgentOpenInChatResponse> GetOpenInChatSeedAsync(long id, CancellationToken cancellationToken = default);
         Task HandleNewAlertAsync(AlertDto alert, CancellationToken cancellationToken = default);
         Task RunMonitoringSweepAsync(CancellationToken cancellationToken = default);
+        Task<AgentInsightDto?> RunDailyDigestAsync(bool force = false, CancellationToken cancellationToken = default);
+        Task<AgentInsightDto?> RunWeeklyDigestAsync(bool force = false, CancellationToken cancellationToken = default);
     }
 
     public class ProactiveAgentService : IProactiveAgentService
@@ -23,6 +25,7 @@ namespace IoTMonitoringSystem.API.Services
 
         private readonly IAgentInsightRepository _insightRepository;
         private readonly IDeviceService _deviceService;
+        private readonly IAlertService _alertService;
         private readonly ILlmClient _llmClient;
         private readonly AgentToolExecutor _toolExecutor;
         private readonly AgentTriggerGate _triggerGate;
@@ -34,6 +37,7 @@ namespace IoTMonitoringSystem.API.Services
         public ProactiveAgentService(
             IAgentInsightRepository insightRepository,
             IDeviceService deviceService,
+            IAlertService alertService,
             ILlmClient llmClient,
             AgentToolExecutor toolExecutor,
             AgentTriggerGate triggerGate,
@@ -44,6 +48,7 @@ namespace IoTMonitoringSystem.API.Services
         {
             _insightRepository = insightRepository;
             _deviceService = deviceService;
+            _alertService = alertService;
             _llmClient = llmClient;
             _toolExecutor = toolExecutor;
             _triggerGate = triggerGate;
@@ -167,6 +172,195 @@ namespace IoTMonitoringSystem.API.Services
 
             await CheckOfflineDevicesAsync(cancellationToken);
             await CheckMqttHealthAsync(cancellationToken);
+        }
+
+        public async Task<AgentInsightDto?> RunDailyDigestAsync(bool force = false, CancellationToken cancellationToken = default)
+        {
+            if (!_configuration.GetValue("Agent:ScheduledReports:Enabled", true))
+                return null;
+
+            var localDate = GetLocalDate();
+            var dedupeKey = $"DailyDigest:{localDate:yyyy-MM-dd}";
+            if (!force && await _insightRepository.ExistsRecentByDedupeKeyAsync(dedupeKey, localDate.Date.ToUniversalTime()))
+                return null;
+
+            var snapshot = await BuildDigestSnapshotAsync("DailyDigest", cancellationToken);
+            return await CreateScheduledDigestInsightAsync(
+                triggerType: "DailyDigest",
+                dedupeKey: dedupeKey,
+                fallbackTitle: $"Daily monitoring digest — {localDate:MMMM d, yyyy}",
+                fallbackSummary: snapshot.SummaryText,
+                suggestedActions: snapshot.SuggestedActions,
+                contextJson: snapshot.ContextJson,
+                severity: snapshot.Severity,
+                cancellationToken: cancellationToken);
+        }
+
+        public async Task<AgentInsightDto?> RunWeeklyDigestAsync(bool force = false, CancellationToken cancellationToken = default)
+        {
+            if (!_configuration.GetValue("Agent:ScheduledReports:Enabled", true))
+                return null;
+
+            var weekStart = GetLocalWeekStartDate();
+            var dedupeKey = $"WeeklyDigest:{weekStart:yyyy-MM-dd}";
+            if (!force && await _insightRepository.ExistsRecentByDedupeKeyAsync(dedupeKey, weekStart.Date.ToUniversalTime()))
+                return null;
+
+            var snapshot = await BuildDigestSnapshotAsync("WeeklyDigest", cancellationToken);
+            return await CreateScheduledDigestInsightAsync(
+                triggerType: "WeeklyDigest",
+                dedupeKey: dedupeKey,
+                fallbackTitle: $"Weekly monitoring summary — week of {weekStart:MMMM d, yyyy}",
+                fallbackSummary: snapshot.SummaryText,
+                suggestedActions: snapshot.SuggestedActions,
+                contextJson: snapshot.ContextJson,
+                severity: snapshot.Severity,
+                cancellationToken: cancellationToken);
+        }
+
+        private async Task<AgentInsightDto?> CreateScheduledDigestInsightAsync(
+            string triggerType,
+            string dedupeKey,
+            string fallbackTitle,
+            string fallbackSummary,
+            IReadOnlyList<string> suggestedActions,
+            string contextJson,
+            string severity,
+            CancellationToken cancellationToken)
+        {
+            string title = fallbackTitle;
+            string summary = fallbackSummary;
+            var toolsUsed = new List<string>();
+            var usedLlm = false;
+
+            if (_llmClient.IsConfigured)
+            {
+                try
+                {
+                    var llmResult = await GenerateLlmSummaryAsync(contextJson, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(llmResult.Summary))
+                    {
+                        summary = llmResult.Summary.Trim();
+                        if (!string.IsNullOrWhiteSpace(llmResult.Title))
+                            title = llmResult.Title.Trim();
+                        toolsUsed = llmResult.ToolsUsed;
+                        usedLlm = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Scheduled digest LLM summary failed for {TriggerType}", triggerType);
+                }
+            }
+
+            var insight = new AgentInsight
+            {
+                TriggerType = triggerType,
+                DedupeKey = dedupeKey,
+                Severity = severity,
+                Title = title,
+                Summary = summary,
+                SuggestedActionsJson = JsonSerializer.Serialize(suggestedActions),
+                RelatedAlertId = null,
+                RelatedDeviceId = null,
+                ToolsUsedJson = toolsUsed.Count > 0 ? JsonSerializer.Serialize(toolsUsed) : null,
+                Status = "Active",
+                UsedLlm = usedLlm,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            insight = await _insightRepository.CreateAsync(insight);
+            var dto = MapToDto(insight);
+            await _notificationService.NotifyAgentInsightAsync(dto);
+            _logger.LogInformation("Created scheduled insight {InsightId} ({TriggerType})", insight.AgentInsightId, triggerType);
+            return dto;
+        }
+
+        private async Task<(string SummaryText, IReadOnlyList<string> SuggestedActions, string ContextJson, string Severity)>
+            BuildDigestSnapshotAsync(string digestType, CancellationToken cancellationToken)
+        {
+            var devices = await _deviceService.GetAllDevicesAsync();
+            var activeDevices = devices.Where(d => d.IsActive).ToList();
+            var offlineMinutes = _configuration.GetValue("Agent:Proactive:DeviceOfflineMinutes", 15);
+            var cutoff = DateTime.UtcNow.AddMinutes(-offlineMinutes);
+            var offlineDevices = activeDevices
+                .Where(d => !d.LastSeenAt.HasValue || d.LastSeenAt.Value < cutoff)
+                .ToList();
+
+            var activeAlerts = await _alertService.GetActiveAlertsAsync();
+            var criticalAlerts = activeAlerts.Count(a =>
+                a.Severity.Equals("critical", StringComparison.OrdinalIgnoreCase) ||
+                a.Severity.Equals("high", StringComparison.OrdinalIgnoreCase));
+
+            var mqttHealthy = _mqttRuntimeState.IsConnected && _mqttRuntimeState.IsSubscribed;
+            var severity = criticalAlerts > 0 || !mqttHealthy ? "warning" : "info";
+
+            var summaryText =
+                $"{digestType} snapshot: {activeDevices.Count} active device(s), {offlineDevices.Count} offline/stale, " +
+                $"{activeAlerts.Count} active alert(s) ({criticalAlerts} high/critical). " +
+                $"MQTT pipeline is {(mqttHealthy ? "healthy" : "unhealthy")}.";
+
+            var suggestedActions = new List<string>
+            {
+                "Review active alerts on the Alerts page.",
+                "Check offline devices and recent sensor readings.",
+                "Open System Health for MQTT/API status."
+            };
+
+            if (offlineDevices.Count > 0)
+                suggestedActions.Insert(0, $"Investigate {offlineDevices.Count} offline or stale device(s).");
+
+            var contextJson = JsonSerializer.Serialize(new
+            {
+                trigger = digestType,
+                generatedAtUtc = DateTime.UtcNow,
+                devices = new
+                {
+                    totalActive = activeDevices.Count,
+                    offlineCount = offlineDevices.Count,
+                    offline = offlineDevices.Take(10).Select(d => new { d.DeviceId, d.DeviceName, d.LastSeenAt })
+                },
+                alerts = new
+                {
+                    activeCount = activeAlerts.Count,
+                    highOrCriticalCount = criticalAlerts,
+                    samples = activeAlerts.Take(10).Select(a => new { a.AlertId, a.DeviceId, a.Severity, a.Message })
+                },
+                mqtt = new
+                {
+                    isConnected = _mqttRuntimeState.IsConnected,
+                    isSubscribed = _mqttRuntimeState.IsSubscribed,
+                    lastMessageReceivedAtUtc = _mqttRuntimeState.LastMessageReceivedAtUtc,
+                    lastError = _mqttRuntimeState.LastError
+                }
+            });
+
+            return (summaryText, suggestedActions, contextJson, severity);
+        }
+
+        private DateTime GetLocalDate()
+        {
+            var timeZoneId = _configuration["Agent:ScheduledReports:Timezone"] ?? "Central Standard Time";
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+                return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz).Date;
+            }
+            catch
+            {
+                return DateTime.UtcNow.Date;
+            }
+        }
+
+        private DateTime GetLocalWeekStartDate()
+        {
+            var localDate = GetLocalDate();
+            var configuredDay = _configuration["Agent:ScheduledReports:WeeklyDigestDay"] ?? "Monday";
+            if (!Enum.TryParse<DayOfWeek>(configuredDay, true, out var targetDay))
+                targetDay = DayOfWeek.Monday;
+
+            var diff = ((7 + (localDate.DayOfWeek - targetDay)) % 7);
+            return localDate.AddDays(-diff);
         }
 
         private async Task CheckOfflineDevicesAsync(CancellationToken cancellationToken)

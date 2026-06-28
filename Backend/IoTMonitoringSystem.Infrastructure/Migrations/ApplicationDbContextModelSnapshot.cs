@@ -92,6 +92,72 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
                     b.ToTable("AgentInsights");
                 });
 
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentActionProposal", b =>
+                {
+                    b.Property<long>("AgentActionProposalId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AgentActionProposalId"));
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExecutedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<long?>("RelatedAlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("RelatedDeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ResultJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("UserRole")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("AgentActionProposalId");
+
+                    b.HasIndex("Status", "ExpiresAt");
+
+                    b.HasIndex("Username", "Status");
+
+                    b.ToTable("AgentActionProposals");
+                });
+
             modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.Actuator", b =>
                 {
                     b.Property<int>("ActuatorId")

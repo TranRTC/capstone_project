@@ -10,6 +10,28 @@ export interface AgentChatMessage {
 export interface AgentChatResponse {
   reply: string;
   toolsUsed: string[];
+  docSourcesUsed?: string[];
+  pendingAction?: AgentActionProposal | null;
+}
+
+export interface AgentActionProposal {
+  agentActionProposalId: number;
+  actionType: string;
+  summary: string;
+  status: string;
+  relatedAlertId?: number;
+  relatedDeviceId?: number;
+  createdAt: string;
+  expiresAt: string;
+  canConfirm: boolean;
+}
+
+export interface AgentActionResult {
+  agentActionProposalId: number;
+  actionType: string;
+  status: string;
+  message: string;
+  resultJson?: string;
 }
 
 export interface AgentStatus {
@@ -151,4 +173,40 @@ export async function getOpenInChatSeed(id: number): Promise<string> {
     throw new Error(response.data.message || 'Could not open insight in chat.');
   }
   return response.data.data.seedMessage;
+}
+
+export async function getPendingAgentAction(): Promise<AgentActionProposal | null> {
+  try {
+    const response = await agentApi.get<ApiResponse<AgentActionProposal | null>>('/agent/actions/pending');
+    if (!response.data.success) {
+      throw new Error(response.data.message || 'Could not load pending action.');
+    }
+    return response.data.data ?? null;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error));
+  }
+}
+
+export async function confirmAgentAction(id: number): Promise<AgentActionResult> {
+  try {
+    const response = await agentApi.post<ApiResponse<AgentActionResult>>(`/agent/actions/${id}/confirm`);
+    if (!response.data.success || !response.data.data) {
+      throw new Error(response.data.message || 'Could not confirm action.');
+    }
+    return response.data.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error));
+  }
+}
+
+export async function cancelAgentAction(id: number): Promise<AgentActionProposal> {
+  try {
+    const response = await agentApi.post<ApiResponse<AgentActionProposal>>(`/agent/actions/${id}/cancel`);
+    if (!response.data.success || !response.data.data) {
+      throw new Error(response.data.message || 'Could not cancel action.');
+    }
+    return response.data.data;
+  } catch (error) {
+    throw new Error(extractErrorMessage(error));
+  }
 }

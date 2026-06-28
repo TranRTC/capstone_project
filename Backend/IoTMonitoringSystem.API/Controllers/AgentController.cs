@@ -12,15 +12,18 @@ namespace IoTMonitoringSystem.API.Controllers
     {
         private readonly IAgentService _agentService;
         private readonly IProactiveAgentService _proactiveAgentService;
+        private readonly IAgentActionService _agentActionService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
             IAgentService agentService,
             IProactiveAgentService proactiveAgentService,
+            IAgentActionService agentActionService,
             ILogger<AgentController> logger)
         {
             _agentService = agentService;
             _proactiveAgentService = proactiveAgentService;
+            _agentActionService = agentActionService;
             _logger = logger;
         }
 
@@ -33,6 +36,36 @@ namespace IoTMonitoringSystem.API.Controllers
                 Success = true,
                 Message = status.Configured ? "Assistant is ready." : "Assistant is not configured.",
                 Data = status
+            });
+        }
+
+        [HttpGet("mcp/status")]
+        public ActionResult<ApiResponse<AgentMcpStatusDto>> GetMcpStatus([FromServices] IConfiguration configuration)
+        {
+            var enabled = configuration.GetValue("Mcp:Enabled", true);
+            var path = configuration["Mcp:HttpPath"] ?? "/mcp";
+            var requireKey = configuration.GetValue("Mcp:RequireApiKey", true);
+            var tools = new[]
+            {
+                "get_devices", "get_device", "get_active_alerts", "get_alerts",
+                "get_sensors_by_device", "get_actuators_by_device", "get_recent_readings",
+                "get_system_health", "search_documentation"
+            };
+
+            return Ok(new ApiResponse<AgentMcpStatusDto>
+            {
+                Success = true,
+                Message = enabled ? "MCP server is enabled." : "MCP server is disabled.",
+                Data = new AgentMcpStatusDto
+                {
+                    Enabled = enabled,
+                    HttpPath = path,
+                    RequireApiKey = requireKey,
+                    ToolNames = tools,
+                    SetupHint = enabled
+                        ? $"Connect MCP clients to http://localhost:5000{path} with header X-Mcp-Api-Key (see Documents/MCP.md)."
+                        : "Set Mcp:Enabled to true in appsettings."
+                }
             });
         }
 
@@ -183,6 +216,154 @@ namespace IoTMonitoringSystem.API.Controllers
                 {
                     Success = false,
                     Message = "The assistant could not process your request.",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpGet("actions/pending")]
+        public async Task<ActionResult<ApiResponse<AgentActionProposalDto>>> GetPendingAction(
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var pending = await _agentActionService.GetPendingForUserAsync(User, cancellationToken);
+                return Ok(new ApiResponse<AgentActionProposalDto>
+                {
+                    Success = true,
+                    Message = pending is null ? "No pending actions." : "Pending action retrieved.",
+                    Data = pending
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load pending agent action");
+                return StatusCode(500, new ApiResponse<AgentActionProposalDto>
+                {
+                    Success = false,
+                    Message = "Could not load pending action. Restart the API to apply the AgentActionProposals migration.",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("actions/{id:long}/confirm")]
+        [Authorize(Roles = "Admin,Operator")]
+        public async Task<ActionResult<ApiResponse<AgentActionResultDto>>> ConfirmAction(
+            long id,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await _agentActionService.ConfirmAsync(id, User, cancellationToken);
+                return Ok(new ApiResponse<AgentActionResultDto>
+                {
+                    Success = true,
+                    Message = result.Message,
+                    Data = result
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ApiResponse<AgentActionResultDto>
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<AgentActionResultDto>
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to confirm agent action {Id}", id);
+                return StatusCode(500, new ApiResponse<AgentActionResultDto>
+                {
+                    Success = false,
+                    Message = "Could not execute the action.",
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("actions/{id:long}/cancel")]
+        public async Task<ActionResult<ApiResponse<AgentActionProposalDto>>> CancelAction(
+            long id,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await _agentActionService.CancelAsync(id, User, cancellationToken);
+                return Ok(new ApiResponse<AgentActionProposalDto>
+                {
+                    Success = true,
+                    Message = "Action cancelled.",
+                    Data = result
+                });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new ApiResponse<AgentActionProposalDto>
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ApiResponse<AgentActionProposalDto>
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    Errors = new List<string> { ex.Message }
+                });
+            }
+        }
+
+        [HttpPost("reports/run-digest")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ApiResponse<AgentInsightDto>>> RunDigest(
+            [FromQuery] string type = "Daily",
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                AgentInsightDto? insight = type.Equals("Weekly", StringComparison.OrdinalIgnoreCase)
+                    ? await _proactiveAgentService.RunWeeklyDigestAsync(force: true, cancellationToken)
+                    : await _proactiveAgentService.RunDailyDigestAsync(force: true, cancellationToken);
+
+                if (insight is null)
+                {
+                    return Ok(new ApiResponse<AgentInsightDto>
+                    {
+                        Success = true,
+                        Message = "Digest was not created (scheduled reports may be disabled).",
+                        Data = null
+                    });
+                }
+
+                return Ok(new ApiResponse<AgentInsightDto>
+                {
+                    Success = true,
+                    Message = $"{type} digest insight created.",
+                    Data = insight
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to run digest report");
+                return StatusCode(500, new ApiResponse<AgentInsightDto>
+                {
+                    Success = false,
+                    Message = "Could not generate digest report.",
                     Errors = new List<string> { ex.Message }
                 });
             }

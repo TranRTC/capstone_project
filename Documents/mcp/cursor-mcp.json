@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "iot-monitoring": {
+      "url": "http://localhost:5000/mcp"
+    }
+  }
+}

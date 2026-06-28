@@ -11,6 +11,7 @@ using IoTMonitoringSystem.Services;
 using IoTMonitoringSystem.Core.Interfaces;
 using IoTMonitoringSystem.API.Services;
 using IoTMonitoringSystem.API.Hubs;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,7 @@ builder.Services.AddScoped<IDeviceCommandRepository, DeviceCommandRepository>();
 builder.Services.AddScoped<IDeviceConfigurationRepository, DeviceConfigurationRepository>();
 builder.Services.AddScoped<IActuatorRepository, ActuatorRepository>();
 builder.Services.AddScoped<IAgentInsightRepository, AgentInsightRepository>();
+builder.Services.AddScoped<IAgentActionProposalRepository, AgentActionProposalRepository>();
 
 // Notification Service (SignalR)
 builder.Services.AddScoped<INotificationService, SignalRNotificationService>();
@@ -65,14 +67,32 @@ builder.Services.AddScoped<IActuatorService, ActuatorService>();
 // Auth service
 builder.Services.AddScoped<IAuthService, AuthService>();
 
-// AI assistant (v1 chat + v2 proactive)
+// AI assistant (v1 chat + v2 proactive + v3 write actions)
 builder.Services.AddHttpClient<ILlmClient, LlmClient>();
+builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchService>();
+builder.Services.AddScoped<IIotAgentToolService, IotAgentToolService>();
 builder.Services.AddScoped<AgentToolExecutor>();
+builder.Services.AddScoped<AgentActionExecutor>();
+builder.Services.AddScoped<IAgentActionService, AgentActionService>();
+builder.Services.AddScoped<AgentToggleIntentHandler>();
 builder.Services.AddScoped<IAgentService, AgentService>();
 builder.Services.AddSingleton<AgentTriggerGate>();
 builder.Services.AddScoped<IProactiveAgentService, ProactiveAgentService>();
 builder.Services.AddScoped<IAgentAlertHandler, AgentAlertEventHandler>();
 builder.Services.AddHostedService<AgentMonitoringBackgroundService>();
+builder.Services.AddHostedService<AgentActionExpiryBackgroundService>();
+builder.Services.AddHostedService<AgentReportBackgroundService>();
+
+var mcpEnabled = builder.Configuration.GetValue("Mcp:Enabled", true);
+if (mcpEnabled)
+{
+    builder.Services.AddMcpServer()
+        .WithHttpTransport(options =>
+        {
+            options.Stateless = true;
+        })
+        .WithTools<IoTMonitoringSystem.API.Mcp.IotMonitoringMcpTools>();
+}
 
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Key"]
@@ -265,6 +285,17 @@ if (app.Environment.IsDevelopment())
 // Authentication must come BEFORE Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+
+if (mcpEnabled)
+{
+    var mcpPath = builder.Configuration["Mcp:HttpPath"] ?? "/mcp";
+    app.UseWhen(
+        ctx => ctx.Request.Path.StartsWithSegments(mcpPath, StringComparison.OrdinalIgnoreCase),
+        branch => branch.UseMiddleware<IoTMonitoringSystem.API.Mcp.McpApiKeyMiddleware>());
+    var mcpEndpoint = app.MapMcp(mcpPath);
+    if (app.Environment.IsDevelopment())
+        mcpEndpoint.RequireHost("localhost", "127.0.0.1");
+}
 
 app.MapControllers();
 

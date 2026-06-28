@@ -13,7 +13,16 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
-import { AgentChatMessage, getAgentStatus, sendAgentMessage } from '../../services/agentService';
+import {
+  AgentActionProposal,
+  AgentChatMessage,
+  cancelAgentAction,
+  confirmAgentAction,
+  getAgentStatus,
+  getPendingAgentAction,
+  sendAgentMessage,
+} from '../../services/agentService';
+import ActionConfirmCard from './ActionConfirmCard';
 
 const panelSx = {
   p: 2,
@@ -32,16 +41,34 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
     {
       role: 'assistant',
       content:
-        'Ask about devices, active alerts, recent sensor readings, or system health. I use live data from your monitoring database.',
+        'Ask about devices, active alerts, recent sensor readings, or system health. I use live data from your monitoring database. Operators and Admins can ask me to acknowledge alerts, resolve alerts, or register new devices — you will confirm before anything runs.',
     },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastToolsUsed, setLastToolsUsed] = useState<string[]>([]);
+  const [lastDocSources, setLastDocSources] = useState<string[]>([]);
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [pendingAction, setPendingAction] = useState<AgentActionProposal | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    });
+  };
+
+  const loadPendingAction = async () => {
+    try {
+      const pending = await getPendingAgentAction();
+      setPendingAction(pending);
+    } catch {
+      // Non-fatal if migration not applied yet.
+    }
+  };
 
   useEffect(() => {
     if (seedMessage) {
@@ -62,6 +89,7 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
         setSetupHint('Could not reach the assistant status endpoint. Restart the backend API, then try again.');
       }
     })();
+    void loadPendingAction();
   }, []);
 
   const handleSend = async () => {
@@ -80,7 +108,11 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
     try {
       const result = await sendAgentMessage(trimmed, history);
       setLastToolsUsed(result.toolsUsed ?? []);
+      setLastDocSources(result.docSourcesUsed ?? []);
       setMessages((prev) => [...prev, { role: 'assistant', content: result.reply }]);
+      if (result.pendingAction) {
+        setPendingAction(result.pendingAction);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Assistant request failed.';
       setError(message);
@@ -93,9 +125,43 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
       ]);
     } finally {
       setLoading(false);
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-      });
+      scrollToBottom();
+    }
+  };
+
+  const handleConfirmAction = async (id: number) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      const result = await confirmAgentAction(id);
+      setPendingAction(null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: result.message },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not confirm action.');
+    } finally {
+      setActionLoading(false);
+      scrollToBottom();
+    }
+  };
+
+  const handleCancelAction = async (id: number) => {
+    setActionLoading(true);
+    setError(null);
+    try {
+      await cancelAgentAction(id);
+      setPendingAction(null);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Action cancelled. Nothing was changed.' },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not cancel action.');
+    } finally {
+      setActionLoading(false);
+      scrollToBottom();
     }
   };
 
@@ -115,6 +181,14 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
         </Typography>
         {lastToolsUsed.length > 0 && (
           <Chip size="small" label={`Tools: ${lastToolsUsed.join(', ')}`} variant="outlined" />
+        )}
+        {lastDocSources.length > 0 && (
+          <Chip
+            size="small"
+            label={`Docs: ${lastDocSources.map((s) => s.split('/').pop()).join(', ')}`}
+            color="info"
+            variant="outlined"
+          />
         )}
       </Stack>
 
@@ -183,12 +257,23 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
         </Stack>
       </Box>
 
+      {pendingAction && pendingAction.status === 'Pending' && (
+        <Box sx={{ mb: 2 }}>
+          <ActionConfirmCard
+            proposal={pendingAction}
+            onConfirm={(id) => void handleConfirmAction(id)}
+            onCancel={(id) => void handleCancelAction(id)}
+            loading={actionLoading}
+          />
+        </Box>
+      )}
+
       <Stack direction="row" spacing={1}>
         <TextField
           fullWidth
           multiline
           maxRows={4}
-          placeholder="Ask about devices, alerts, readings, or system health..."
+          placeholder="Ask about devices, alerts, readings, or request an action..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

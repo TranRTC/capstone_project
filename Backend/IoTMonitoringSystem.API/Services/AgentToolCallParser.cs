@@ -19,8 +19,17 @@ namespace IoTMonitoringSystem.API.Services
              content.Contains("get_device", StringComparison.OrdinalIgnoreCase) ||
              content.Contains("get_devices", StringComparison.OrdinalIgnoreCase) ||
              content.Contains("get_actuators", StringComparison.OrdinalIgnoreCase) ||
+             content.Contains("propose_", StringComparison.OrdinalIgnoreCase) ||
              content.Contains("parameters", StringComparison.OrdinalIgnoreCase) ||
              content.Contains("arguments", StringComparison.OrdinalIgnoreCase));
+
+        public static bool LooksLikeProposalJson(string? content) =>
+            !string.IsNullOrWhiteSpace(content) &&
+            content.TrimStart().StartsWith('{') &&
+            (content.Contains("\"summary\"", StringComparison.OrdinalIgnoreCase) ||
+             content.Contains("\"expiresAt\"", StringComparison.OrdinalIgnoreCase) ||
+             content.Contains("\"proposalId\"", StringComparison.OrdinalIgnoreCase) ||
+             content.Contains("\\u0022", StringComparison.Ordinal));
 
         public static IReadOnlyList<LlmToolCall> TryParseFromContent(
             string? content,
@@ -92,18 +101,31 @@ namespace IoTMonitoringSystem.API.Services
 
         private static string BuildArgumentsJson(string content)
         {
-            var deviceMatch = DeviceIdRegex.Match(content);
+            var ofDeviceMatch = OfDeviceIdPattern().Match(content);
+            var deviceMatch = DeviceIdPattern().Match(content);
+            var actuatorMatch = ActuatorIdPattern().Match(content);
             var hoursMatch = HoursRegex.Match(content);
 
-            if (!deviceMatch.Success)
+            var deviceId = ofDeviceMatch.Success
+                ? ofDeviceMatch.Groups["id"].Value
+                : deviceMatch.Success
+                    ? deviceMatch.Groups["id"].Value
+                    : null;
+
+            if (deviceId is null)
                 return "{}";
+
+            if (actuatorMatch.Success)
+            {
+                return $"{{\"deviceId\":{deviceId},\"actuatorId\":{actuatorMatch.Groups["id"].Value}}}";
+            }
 
             if (hoursMatch.Success)
             {
-                return $"{{\"deviceId\":{deviceMatch.Groups["id"].Value},\"hours\":{hoursMatch.Groups["h"].Value}}}";
+                return $"{{\"deviceId\":{deviceId},\"hours\":{hoursMatch.Groups["h"].Value}}}";
             }
 
-            return $"{{\"deviceId\":{deviceMatch.Groups["id"].Value}}}";
+            return $"{{\"deviceId\":{deviceId}}}";
         }
 
         private static LlmToolCall CreateCall(string name, string argumentsJson) =>
@@ -158,8 +180,14 @@ namespace IoTMonitoringSystem.API.Services
         [GeneratedRegex(@"""name""\s*:\s*""(?<name>[^""]+)""", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
         private static partial Regex NamePattern();
 
-        [GeneratedRegex(@"deviceId""?\s*:\s*(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        [GeneratedRegex(@"(?:\bdevice\s+(?:id\s*)?|deviceId\s*[:=]\s*""?)(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
         private static partial Regex DeviceIdPattern();
+
+        [GeneratedRegex(@"\bof\s+device\s+(?:id\s*)?(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        private static partial Regex OfDeviceIdPattern();
+
+        [GeneratedRegex(@"\bactuator\s+(?:id\s*)?(?<id>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        private static partial Regex ActuatorIdPattern();
 
         [GeneratedRegex(@"hours""?\s*:\s*(?<h>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
         private static partial Regex HoursPattern();

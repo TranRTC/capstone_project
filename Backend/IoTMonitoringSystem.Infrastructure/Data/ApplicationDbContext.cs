@@ -22,6 +22,7 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<Actuator> Actuators { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<AgentInsight> AgentInsights { get; set; }
+        public DbSet<AgentActionProposal> AgentActionProposals { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -152,6 +153,12 @@ namespace IoTMonitoringSystem.Infrastructure.Data
 
             modelBuilder.Entity<AgentInsight>()
                 .HasIndex(i => i.DedupeKey);
+
+            modelBuilder.Entity<AgentActionProposal>()
+                .HasIndex(p => new { p.Username, p.Status });
+
+            modelBuilder.Entity<AgentActionProposal>()
+                .HasIndex(p => new { p.Status, p.ExpiresAt });
         }
     }
 }

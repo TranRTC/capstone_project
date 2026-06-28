@@ -85,6 +85,20 @@ namespace IoTMonitoringSystem.API.Services
                     Name = "get_system_health",
                     Description = "Get API and MQTT pipeline health including connection status and message counts.",
                     ParametersSchema = new { type = "object", properties = new { }, required = Array.Empty<string>() }
+                },
+                new LlmToolDefinition
+                {
+                    Name = "search_documentation",
+                    Description = "Search project documentation (README, user manual, API docs, deployment guide) for setup, MQTT, troubleshooting, and how-to questions.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            query = new { type = "string", description = "Search query for project docs" }
+                        },
+                        required = new[] { "query" }
+                    }
                 }
             };
     }

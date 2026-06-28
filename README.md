@@ -52,7 +52,7 @@ flowchart LR
 - **Device control** — Commands over MQTT (`SetPower`, `SetValue`); command history page
 - **Security** — JWT authentication with **Admin**, **Operator** (read/write), and **Viewer** (read-only) roles
 - **MQTT pipeline** — Ingest readings, publish commands, health metrics endpoint
-- **AI assistant (v1)** — Chat over live devices, alerts, readings, and system health via tool calling
+- **AI assistant (v1–v3)** — Chat, proactive insights, confirmed write actions, docs search, scheduled digests
 
 ---
 
@@ -226,7 +226,35 @@ Configure in `Agent:Proactive` (see `appsettings.json`):
 - `Enabled`, `DeviceOfflineMinutes`, `MqttUnhealthyMinutes`, `SweepIntervalSeconds`
 - `InsightCooldownMinutes`, `MaxInsightsPerHour`
 
-v2 remains **read-only** (no device creation or commands via AI). Writes are planned for v3.
+v2 remains **read-only** for automatic insights. **v3** adds confirmed write actions, documentation search (RAG), and scheduled digests — see below.
+
+### v3 — Confirmed actions, docs (RAG), scheduled digests
+
+**Write actions (Admin/Operator):** The assistant can *propose* actions; you must **Confirm** in chat before anything runs:
+- Acknowledge / resolve alerts
+- Create devices
+- Send actuator commands (`SetPower` on/off, `SetValue` for analog)
+
+**Documentation (RAG):** Ask setup or troubleshooting questions (e.g. *“How do I deploy to Azure?”*, *“What MQTT topics does the edge use?”*). The assistant searches indexed project markdown and cites sources.
+
+**Scheduled digests:** Daily (and weekly) summary insights appear in the proactive feed with trigger types `DailyDigest` / `WeeklyDigest`.
+
+Configure in `Agent:Actions`, `Agent:Rag`, and `Agent:ScheduledReports` (see `appsettings.json`).
+
+Admins can manually trigger a digest for demos:
+```http
+POST /api/v1/agent/reports/run-digest?type=Daily
+Authorization: Bearer <admin-jwt>
+```
+
+### MCP (Model Context Protocol)
+
+The API hosts a **read-only** MCP server at `http://localhost:5000/mcp` (configurable via `Mcp:HttpPath`). External clients such as **Cursor** can call the same data tools as the in-dashboard assistant without duplicating business logic.
+
+- **Tools:** devices, alerts, sensors, actuators, readings, system health, documentation search
+- **Writes:** not exposed over MCP (use dashboard confirm flow)
+- **Setup:** see [Documents/MCP.md](Documents/MCP.md) and `Documents/mcp/cursor-mcp.json`
+- **Status:** `GET /api/v1/agent/mcp/status` (JWT)
 
 ### Local development — Ollama (free)
 
