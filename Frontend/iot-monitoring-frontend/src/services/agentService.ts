@@ -7,11 +7,21 @@ export interface AgentChatMessage {
   content: string;
 }
 
+export interface AgentChatContext {
+  deviceId?: number;
+  alertId?: number;
+  route?: string;
+}
+
 export interface AgentChatResponse {
   reply: string;
   toolsUsed: string[];
   docSourcesUsed?: string[];
   pendingAction?: AgentActionProposal | null;
+  sessionId?: number;
+  dataAsOfUtc?: string;
+  contextUsed?: AgentChatContext;
+  usedIntentRouter?: boolean;
 }
 
 export interface AgentActionProposal {
@@ -64,6 +74,30 @@ export interface AgentProactiveStatus {
   lastSweepAtUtc?: string;
 }
 
+export interface AgentMetrics {
+  chatRequestsLast24h: number;
+  toolCallsLast24h: number;
+  actionsConfirmedLast24h: number;
+  loopLimitHitsLast24h: number;
+  llmErrorsLast24h: number;
+  averageChatDurationMs: number;
+  topTools: { toolName: string; count: number }[];
+  generatedAtUtc: string;
+}
+
+export interface AgentAuditLogEntry {
+  agentAuditLogId: number;
+  eventType: string;
+  username: string;
+  userRole?: string;
+  toolName?: string;
+  summary?: string;
+  relatedDeviceId?: number;
+  durationMs?: number;
+  success: boolean;
+  createdAt: string;
+}
+
 export interface PagedAgentInsights {
   items: AgentInsight[];
   totalCount: number;
@@ -113,12 +147,15 @@ export async function getAgentStatus(): Promise<AgentStatus> {
 
 export async function sendAgentMessage(
   message: string,
-  history?: AgentChatMessage[]
+  history?: AgentChatMessage[],
+  options?: { sessionId?: number; context?: AgentChatContext }
 ): Promise<AgentChatResponse> {
   try {
     const response = await agentApi.post<ApiResponse<AgentChatResponse>>('/agent/chat', {
       message,
       history,
+      sessionId: options?.sessionId,
+      context: options?.context,
     });
 
     if (!response.data.success || !response.data.data) {
@@ -209,4 +246,30 @@ export async function cancelAgentAction(id: number): Promise<AgentActionProposal
   } catch (error) {
     throw new Error(extractErrorMessage(error));
   }
+}
+
+export async function getSuggestedPrompts(deviceId?: number): Promise<string[]> {
+  const response = await agentApi.get<ApiResponse<{ prompts: string[] }>>('/agent/suggested-prompts', {
+    params: deviceId ? { deviceId } : undefined,
+  });
+  if (!response.data.success || !response.data.data) {
+    return [];
+  }
+  return response.data.data.prompts;
+}
+
+export async function getAgentMetrics(): Promise<AgentMetrics> {
+  const response = await agentApi.get<ApiResponse<AgentMetrics>>('/agent/metrics');
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message || 'Could not load metrics.');
+  }
+  return response.data.data;
+}
+
+export async function getAgentAuditLog(take = 50): Promise<AgentAuditLogEntry[]> {
+  const response = await agentApi.get<ApiResponse<AgentAuditLogEntry[]>>('/agent/audit', { params: { take } });
+  if (!response.data.success || !response.data.data) {
+    throw new Error(response.data.message || 'Could not load audit log.');
+  }
+  return response.data.data;
 }

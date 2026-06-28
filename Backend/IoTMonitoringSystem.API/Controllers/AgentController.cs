@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using IoTMonitoringSystem.API.Services;
 using IoTMonitoringSystem.Core.DTOs;
+using IoTMonitoringSystem.Infrastructure.Repositories;
 
 namespace IoTMonitoringSystem.API.Controllers
 {
@@ -13,17 +14,23 @@ namespace IoTMonitoringSystem.API.Controllers
         private readonly IAgentService _agentService;
         private readonly IProactiveAgentService _proactiveAgentService;
         private readonly IAgentActionService _agentActionService;
+        private readonly IAgentAuditRepository _auditRepository;
+        private readonly IAgentChatSessionService _chatSessionService;
         private readonly ILogger<AgentController> _logger;
 
         public AgentController(
             IAgentService agentService,
             IProactiveAgentService proactiveAgentService,
             IAgentActionService agentActionService,
+            IAgentAuditRepository auditRepository,
+            IAgentChatSessionService chatSessionService,
             ILogger<AgentController> logger)
         {
             _agentService = agentService;
             _proactiveAgentService = proactiveAgentService;
             _agentActionService = agentActionService;
+            _auditRepository = auditRepository;
+            _chatSessionService = chatSessionService;
             _logger = logger;
         }
 
@@ -49,7 +56,9 @@ namespace IoTMonitoringSystem.API.Controllers
             {
                 "get_devices", "get_device", "get_active_alerts", "get_alerts",
                 "get_sensors_by_device", "get_actuators_by_device", "get_recent_readings",
-                "get_system_health", "search_documentation"
+                "get_system_health", "search_documentation",
+                "find_devices", "get_alert_summary", "get_operational_snapshot",
+                "get_sensor_reading_summary"
             };
 
             return Ok(new ApiResponse<AgentMcpStatusDto>
@@ -66,6 +75,94 @@ namespace IoTMonitoringSystem.API.Controllers
                         ? $"Connect MCP clients to http://localhost:5000{path} with header X-Mcp-Api-Key (see Documents/MCP.md)."
                         : "Set Mcp:Enabled to true in appsettings."
                 }
+            });
+        }
+
+        [HttpGet("suggested-prompts")]
+        public ActionResult<ApiResponse<AgentSuggestedPromptsDto>> GetSuggestedPrompts(
+            [FromQuery] int? deviceId,
+            [FromServices] IConfiguration configuration)
+        {
+            var prompts = new List<string>
+            {
+                "Show operational snapshot",
+                "Summarize active alerts",
+                "Which devices are offline?",
+                "Is MQTT healthy?"
+            };
+
+            if (deviceId.HasValue)
+            {
+                prompts.Insert(0, $"What's wrong with device {deviceId}?");
+                prompts.Insert(1, $"Sensor reading summary for device {deviceId}");
+                prompts.Insert(2, $"Show actuators on device {deviceId}");
+            }
+
+            return Ok(new ApiResponse<AgentSuggestedPromptsDto>
+            {
+                Success = true,
+                Message = "Suggested prompts loaded.",
+                Data = new AgentSuggestedPromptsDto { Prompts = prompts }
+            });
+        }
+
+        [HttpGet("metrics")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ApiResponse<AgentMetricsDto>>> GetMetrics()
+        {
+            var since = DateTime.UtcNow.AddHours(-24);
+            var metrics = await _auditRepository.GetMetricsAsync(since);
+            return Ok(new ApiResponse<AgentMetricsDto>
+            {
+                Success = true,
+                Message = "Assistant metrics (last 24h).",
+                Data = metrics
+            });
+        }
+
+        [HttpGet("audit")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<ApiResponse<List<AgentAuditLogDto>>>> GetAuditLog([FromQuery] int take = 50)
+        {
+            take = Math.Clamp(take, 1, 200);
+            var logs = await _auditRepository.GetRecentAsync(take);
+            return Ok(new ApiResponse<List<AgentAuditLogDto>>
+            {
+                Success = true,
+                Message = $"Last {logs.Count} audit entries.",
+                Data = logs.Select(l => new AgentAuditLogDto
+                {
+                    AgentAuditLogId = l.AgentAuditLogId,
+                    EventType = l.EventType,
+                    Username = l.Username,
+                    UserRole = l.UserRole,
+                    ToolName = l.ToolName,
+                    Summary = l.Summary,
+                    RelatedDeviceId = l.RelatedDeviceId,
+                    RelatedAlertId = l.RelatedAlertId,
+                    DurationMs = l.DurationMs,
+                    Success = l.Success,
+                    CreatedAt = l.CreatedAt
+                }).ToList()
+            });
+        }
+
+        [HttpGet("sessions/{sessionId:long}")]
+        public async Task<ActionResult<ApiResponse<AgentChatSessionDto>>> GetSession(long sessionId)
+        {
+            var username = User.Identity?.Name ?? User.FindFirst("unique_name")?.Value;
+            if (string.IsNullOrWhiteSpace(username))
+                return Unauthorized();
+
+            var session = await _chatSessionService.GetSessionDtoAsync(sessionId, username);
+            if (session is null)
+                return NotFound(new ApiResponse<AgentChatSessionDto> { Success = false, Message = "Session not found." });
+
+            return Ok(new ApiResponse<AgentChatSessionDto>
+            {
+                Success = true,
+                Message = "Chat session loaded.",
+                Data = session
             });
         }
 

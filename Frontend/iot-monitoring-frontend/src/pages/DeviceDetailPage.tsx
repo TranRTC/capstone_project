@@ -684,6 +684,9 @@ const DeviceDetailPage: React.FC = () => {
         <Link component={RouterLink} to={`/sensors?deviceId=${device.deviceId}`} underline="hover">Sensors</Link>
         {' '}and{' '}
         <Link component={RouterLink} to={`/actuators?deviceId=${device.deviceId}`} underline="hover">Actuators</Link> tabs.
+        {' '}Ask the{' '}
+        <Link component={RouterLink} to={`/assistant?deviceId=${device.deviceId}`} underline="hover">Assistant</Link>
+        {' '}about this device.
       </Typography>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>

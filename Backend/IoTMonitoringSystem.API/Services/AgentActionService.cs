@@ -25,6 +25,7 @@ namespace IoTMonitoringSystem.API.Services
         private readonly IDeviceService _deviceService;
         private readonly IActuatorService _actuatorService;
         private readonly AgentActionExecutor _executor;
+        private readonly IAgentAuditService _auditService;
         private readonly IConfiguration _configuration;
         private readonly ILogger<AgentActionService> _logger;
 
@@ -34,6 +35,7 @@ namespace IoTMonitoringSystem.API.Services
             IDeviceService deviceService,
             IActuatorService actuatorService,
             AgentActionExecutor executor,
+            IAgentAuditService auditService,
             IConfiguration configuration,
             ILogger<AgentActionService> logger)
         {
@@ -42,6 +44,7 @@ namespace IoTMonitoringSystem.API.Services
             _deviceService = deviceService;
             _actuatorService = actuatorService;
             _executor = executor;
+            _auditService = auditService;
             _configuration = configuration;
             _logger = logger;
         }
@@ -142,6 +145,15 @@ namespace IoTMonitoringSystem.API.Services
                 proposal.ResultJson = resultJson;
                 proposal.ExecutedAt = DateTime.UtcNow;
                 await _repository.UpdateAsync(proposal);
+
+                await _auditService.LogAsync(
+                    "ActionConfirmed",
+                    username,
+                    GetRole(user),
+                    proposal.ActionType,
+                    proposal.Summary,
+                    relatedDeviceId: proposal.RelatedDeviceId,
+                    relatedAlertId: proposal.RelatedAlertId);
 
                 return new AgentActionResultDto
                 {

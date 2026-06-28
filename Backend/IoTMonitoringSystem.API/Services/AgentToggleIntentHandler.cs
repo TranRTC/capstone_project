@@ -31,14 +31,31 @@ namespace IoTMonitoringSystem.API.Services
 
         public static bool LooksLikeToggleRequest(string? message) =>
             !string.IsNullOrWhiteSpace(message) &&
-            ToggleKeywordPattern().IsMatch(message);
+            ToggleKeywordPattern().IsMatch(NormalizeMessage(message));
 
         public static bool LooksLikeTurnOnOffRequest(string? message) =>
             !string.IsNullOrWhiteSpace(message) &&
-            TurnOnOffPattern().IsMatch(message);
+            TurnOnOffPattern().IsMatch(NormalizeMessage(message));
 
-        public static bool LooksLikeActuatorCommandRequest(string? message) =>
-            LooksLikeToggleRequest(message) || LooksLikeTurnOnOffRequest(message);
+        public static bool LooksLikeActuatorCommandRequest(string? message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return false;
+
+            var normalized = NormalizeMessage(message);
+            if (LooksLikeToggleRequest(normalized) || LooksLikeTurnOnOffRequest(normalized))
+                return true;
+
+            // "turn of actuator..." typo or "turn actuator 1 device 1" without on/off
+            return TurnOrToggleWithActuatorPattern().IsMatch(normalized);
+        }
+
+        public static string NormalizeMessage(string message)
+        {
+            var m = message.Trim();
+            m = TurnOfTypoPattern().Replace(m, "turn off");
+            return m;
+        }
 
         public sealed class ActuatorCommandIntentResult
         {
@@ -54,6 +71,8 @@ namespace IoTMonitoringSystem.API.Services
         {
             if (!LooksLikeActuatorCommandRequest(message))
                 return new ActuatorCommandIntentResult();
+
+            message = NormalizeMessage(message);
 
             try
             {
@@ -335,6 +354,12 @@ namespace IoTMonitoringSystem.API.Services
         private static ActuatorDto? FindActuatorByName(IReadOnlyList<ActuatorDto> actuators, string name) =>
             actuators.FirstOrDefault(a => a.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
             ?? actuators.FirstOrDefault(a => a.Name.Contains(name, StringComparison.OrdinalIgnoreCase));
+
+        [GeneratedRegex(@"\bturn\s+of\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        private static partial Regex TurnOfTypoPattern();
+
+        [GeneratedRegex(@"\b(turn|toggle)\b.*\bactuator\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+        private static partial Regex TurnOrToggleWithActuatorPattern();
 
         [GeneratedRegex(@"\btoggle\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
         private static partial Regex ToggleKeywordPattern();

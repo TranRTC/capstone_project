@@ -256,6 +256,23 @@ The API hosts a **read-only** MCP server at `http://localhost:5000/mcp` (configu
 - **Setup:** see [Documents/MCP.md](Documents/MCP.md) and `Documents/mcp/cursor-mcp.json`
 - **Status:** `GET /api/v1/agent/mcp/status` (JWT)
 
+### Professional assistant (v4)
+
+The in-dashboard assistant adds operator-grade features:
+
+| Feature | Description |
+|---------|-------------|
+| **Context-aware chat** | Pass `deviceId` via `/assistant?deviceId=1` or from device page link |
+| **Intent router** | Fast answers for alerts, health, offline devices without extra LLM tool loops |
+| **Analytics tools** | `get_alert_summary`, `get_operational_snapshot`, `get_sensor_reading_summary`, `find_devices` |
+| **Audit log** | All chats, tool calls, and confirmed actions (Admin: `GET /api/v1/agent/audit`) |
+| **Metrics** | 24h usage stats (Admin: `GET /api/v1/agent/metrics`) |
+| **Server-side sessions** | Chat history persisted per user (`sessionId` returned from chat) |
+| **Data citations** | Replies include live data timestamp and tools used |
+| **Suggested prompts** | `GET /api/v1/agent/suggested-prompts` |
+
+Config: `Agent:IntentRouter`, `Agent:Sessions` in `appsettings.json`.
+
 ### Local development — Ollama (free)
 
 Development defaults in `appsettings.Development.json` use **Ollama** on `http://localhost:11434/v1` with model `llama3.2`.

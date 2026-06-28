@@ -15,11 +15,13 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import {
   AgentActionProposal,
+  AgentChatContext,
   AgentChatMessage,
   cancelAgentAction,
   confirmAgentAction,
   getAgentStatus,
   getPendingAgentAction,
+  getSuggestedPrompts,
   sendAgentMessage,
 } from '../../services/agentService';
 import ActionConfirmCard from './ActionConfirmCard';
@@ -36,7 +38,10 @@ const panelSx = {
   minHeight: 480,
 };
 
-const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = null }) => {
+const ChatPanel: React.FC<{ seedMessage?: string | null; context?: AgentChatContext }> = ({
+  seedMessage = null,
+  context,
+}) => {
   const [messages, setMessages] = useState<AgentChatMessage[]>([
     {
       role: 'assistant',
@@ -53,6 +58,9 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
   const [setupHint, setSetupHint] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [pendingAction, setPendingAction] = useState<AgentActionProposal | null>(null);
+  const [sessionId, setSessionId] = useState<number | undefined>();
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([]);
+  const [lastDataAsOf, setLastDataAsOf] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -90,7 +98,15 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
       }
     })();
     void loadPendingAction();
-  }, []);
+    void (async () => {
+      try {
+        const prompts = await getSuggestedPrompts(context?.deviceId);
+        setSuggestedPrompts(prompts);
+      } catch {
+        setSuggestedPrompts([]);
+      }
+    })();
+  }, [context?.deviceId]);
 
   const handleSend = async () => {
     const trimmed = input.trim();
@@ -106,9 +122,11 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
     setError(null);
 
     try {
-      const result = await sendAgentMessage(trimmed, history);
+      const result = await sendAgentMessage(trimmed, history, { sessionId, context });
       setLastToolsUsed(result.toolsUsed ?? []);
       setLastDocSources(result.docSourcesUsed ?? []);
+      if (result.sessionId) setSessionId(result.sessionId);
+      if (result.dataAsOfUtc) setLastDataAsOf(result.dataAsOfUtc);
       setMessages((prev) => [...prev, { role: 'assistant', content: result.reply }]);
       if (result.pendingAction) {
         setPendingAction(result.pendingAction);
@@ -190,7 +208,28 @@ const ChatPanel: React.FC<{ seedMessage?: string | null }> = ({ seedMessage = nu
             variant="outlined"
           />
         )}
+        {lastDataAsOf && (
+          <Chip size="small" label={`Data: ${new Date(lastDataAsOf).toLocaleString()}`} variant="outlined" />
+        )}
+        {context?.deviceId && (
+          <Chip size="small" label={`Device ${context.deviceId} context`} color="secondary" variant="outlined" />
+        )}
       </Stack>
+
+      {suggestedPrompts.length > 0 && (
+        <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          {suggestedPrompts.map((prompt) => (
+            <Chip
+              key={prompt}
+              label={prompt}
+              size="small"
+              onClick={() => setInput(prompt)}
+              clickable
+              variant="outlined"
+            />
+          ))}
+        </Stack>
+      )}
 
       {setupHint && (
         <Alert severity="warning" sx={{ mb: 2 }}>

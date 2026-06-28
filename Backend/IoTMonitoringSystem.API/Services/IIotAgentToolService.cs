@@ -15,5 +15,10 @@ namespace IoTMonitoringSystem.API.Services
         Task<string> GetRecentReadingsJsonAsync(int deviceId, int hours = 24, CancellationToken cancellationToken = default);
         Task<string> GetSystemHealthJsonAsync(CancellationToken cancellationToken = default);
         Task<string> SearchDocumentationJsonAsync(string query, CancellationToken cancellationToken = default);
+        Task<string> FindDevicesJsonAsync(string query, CancellationToken cancellationToken = default);
+        Task<string> FindActuatorsJsonAsync(int deviceId, string query, CancellationToken cancellationToken = default);
+        Task<string> GetAlertSummaryJsonAsync(int? deviceId = null, CancellationToken cancellationToken = default);
+        Task<string> GetSensorReadingSummaryJsonAsync(int deviceId, int hours = 24, int? sensorId = null, CancellationToken cancellationToken = default);
+        Task<string> GetOperationalSnapshotJsonAsync(int? deviceId = null, CancellationToken cancellationToken = default);
     }
 }

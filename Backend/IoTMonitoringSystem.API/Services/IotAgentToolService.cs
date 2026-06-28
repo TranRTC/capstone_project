@@ -61,6 +61,11 @@ namespace IoTMonitoringSystem.API.Services
                     "get_recent_readings" => await GetRecentReadingsJsonFromArgsAsync(root),
                     "get_system_health" => await GetSystemHealthJsonAsync(),
                     "search_documentation" => await SearchDocumentationFromArgsAsync(root),
+                    "find_devices" => await FindDevicesFromArgsAsync(root),
+                    "find_actuators" => await FindActuatorsFromArgsAsync(root),
+                    "get_alert_summary" => await GetAlertSummaryFromArgsAsync(root),
+                    "get_sensor_reading_summary" => await GetSensorReadingSummaryFromArgsAsync(root),
+                    "get_operational_snapshot" => await GetOperationalSnapshotFromArgsAsync(root),
                     _ => JsonSerializer.Serialize(new { error = $"Unknown tool '{toolName}'." })
                 };
             }
@@ -201,6 +206,170 @@ namespace IoTMonitoringSystem.API.Services
             }));
         }
 
+        public async Task<string> FindDevicesJsonAsync(string query, CancellationToken cancellationToken = default)
+        {
+            var devices = await _deviceService.GetAllDevicesAsync();
+            if (string.IsNullOrWhiteSpace(query))
+                return JsonSerializer.Serialize(new { dataAsOfUtc = DateTime.UtcNow, count = devices.Count, devices });
+
+            var q = query.Trim();
+            var matches = devices.Where(d =>
+                d.DeviceName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                (d.Location?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                d.DeviceType.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                d.DeviceId.ToString() == q).ToList();
+
+            return JsonSerializer.Serialize(new { dataAsOfUtc = DateTime.UtcNow, query = q, count = matches.Count, devices = matches });
+        }
+
+        public async Task<string> FindActuatorsJsonAsync(int deviceId, string query, CancellationToken cancellationToken = default)
+        {
+            var actuators = await _actuatorService.GetByDeviceIdAsync(deviceId);
+            if (string.IsNullOrWhiteSpace(query))
+                return await GetActuatorsByDeviceJsonAsync(deviceId, cancellationToken);
+
+            var q = query.Trim();
+            var matches = actuators.Where(a =>
+                a.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                a.ActuatorId.ToString() == q ||
+                (a.Description?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+
+            return JsonSerializer.Serialize(new
+            {
+                dataAsOfUtc = DateTime.UtcNow,
+                deviceId,
+                query = q,
+                count = matches.Count,
+                actuators = matches.Select(a => new
+                {
+                    a.ActuatorId,
+                    a.Name,
+                    a.LastKnownState,
+                    parsedIsOn = ActuatorStateHelper.TryParseIsOn(a.LastKnownState),
+                    stateDescription = ActuatorStateHelper.DescribeState(a.LastKnownState)
+                })
+            });
+        }
+
+        public async Task<string> GetAlertSummaryJsonAsync(int? deviceId = null, CancellationToken cancellationToken = default)
+        {
+            var active = await _alertService.GetActiveAlertsAsync();
+            if (deviceId.HasValue)
+                active = active.Where(a => a.DeviceId == deviceId.Value).ToList();
+
+            var bySeverity = active
+                .GroupBy(a => a.Severity, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count());
+
+            return JsonSerializer.Serialize(new
+            {
+                dataAsOfUtc = DateTime.UtcNow,
+                deviceId,
+                totalActive = active.Count,
+                bySeverity,
+                recent = active
+                    .OrderByDescending(a => a.TriggeredAt)
+                    .Take(15)
+                    .Select(a => new { a.AlertId, a.DeviceId, a.Severity, a.Status, a.Message, a.TriggeredAt })
+            });
+        }
+
+        public async Task<string> GetSensorReadingSummaryJsonAsync(int deviceId, int hours = 24, int? sensorId = null, CancellationToken cancellationToken = default)
+        {
+            hours = Math.Clamp(hours, 1, 168);
+            var end = DateTime.UtcNow;
+            var start = end.AddHours(-hours);
+            var readings = await _sensorReadingService.GetReadingsByDeviceIdAsync(deviceId, start, end);
+            if (sensorId.HasValue)
+                readings = readings.Where(r => r.SensorId == sensorId.Value).ToList();
+
+            var sensors = await _sensorService.GetSensorsByDeviceIdAsync(deviceId);
+            var sensorLookup = sensors.ToDictionary(s => s.SensorId, s => s);
+
+            var summaries = readings
+                .GroupBy(r => r.SensorId)
+                .Select(g =>
+                {
+                    var values = g.Select(x => x.Value).ToList();
+                    var latest = g.OrderByDescending(x => x.Timestamp).First();
+                    sensorLookup.TryGetValue(g.Key, out var sensor);
+                    return new
+                    {
+                        sensorId = g.Key,
+                        sensorName = sensor?.SensorName ?? $"Sensor {g.Key}",
+                        unit = sensor?.Unit,
+                        count = values.Count,
+                        min = values.Count > 0 ? values.Min() : (decimal?)null,
+                        max = values.Count > 0 ? values.Max() : (decimal?)null,
+                        average = values.Count > 0 ? Math.Round(values.Average(), 2) : (decimal?)null,
+                        latestValue = latest.Value,
+                        latestAt = latest.Timestamp
+                    };
+                })
+                .OrderBy(s => s.sensorName)
+                .ToList();
+
+            return JsonSerializer.Serialize(new { dataAsOfUtc = DateTime.UtcNow, deviceId, hours, sensorId, sensors = summaries });
+        }
+
+        public async Task<string> GetOperationalSnapshotJsonAsync(int? deviceId = null, CancellationToken cancellationToken = default)
+        {
+            var offlineMinutes = _configuration.GetValue("Agent:Proactive:DeviceOfflineMinutes", 15);
+            var cutoff = DateTime.UtcNow.AddMinutes(-offlineMinutes);
+            var devices = await _deviceService.GetAllDevicesAsync();
+            var offline = devices
+                .Where(d => !d.LastSeenAt.HasValue || d.LastSeenAt < cutoff)
+                .Select(d => new { d.DeviceId, d.DeviceName, d.Location, d.LastSeenAt })
+                .ToList();
+
+            var activeAlerts = await _alertService.GetActiveAlertsAsync();
+            if (deviceId.HasValue)
+                activeAlerts = activeAlerts.Where(a => a.DeviceId == deviceId.Value).ToList();
+
+            object? focusDevice = null;
+            if (deviceId.HasValue)
+            {
+                try
+                {
+                    var device = await _deviceService.GetDeviceByIdAsync(deviceId.Value);
+                    focusDevice = new
+                    {
+                        device.DeviceId,
+                        device.DeviceName,
+                        device.Location,
+                        device.IsActive,
+                        device.LastSeenAt,
+                        isOffline = !device.LastSeenAt.HasValue || device.LastSeenAt < cutoff
+                    };
+                }
+                catch (KeyNotFoundException)
+                {
+                    focusDevice = new { error = $"Device {deviceId} not found." };
+                }
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                dataAsOfUtc = DateTime.UtcNow,
+                mqtt = new
+                {
+                    isConnected = _mqttRuntimeState.IsConnected,
+                    isSubscribed = _mqttRuntimeState.IsSubscribed,
+                    lastMessageReceivedAtUtc = _mqttRuntimeState.LastMessageReceivedAtUtc,
+                    totalMessagesReceived = _mqttIngestMetrics.TotalMessagesReceived,
+                    lastError = _mqttRuntimeState.LastError
+                },
+                devices = new { total = devices.Count, offlineCount = offline.Count, offline },
+                alerts = new
+                {
+                    activeCount = activeAlerts.Count,
+                    criticalCount = activeAlerts.Count(a => a.Severity.Equals("critical", StringComparison.OrdinalIgnoreCase)),
+                    highCount = activeAlerts.Count(a => a.Severity.Equals("high", StringComparison.OrdinalIgnoreCase))
+                },
+                focusDevice
+            });
+        }
+
         private async Task<string> GetDeviceJsonFromArgsAsync(JsonElement root)
         {
             var deviceId = await ResolveDeviceIdAsync(root);
@@ -228,6 +397,28 @@ namespace IoTMonitoringSystem.API.Services
             var hours = Math.Clamp(TryGetInt(root, "hours") ?? 24, 1, 168);
             return await GetRecentReadingsJsonAsync(deviceId, hours);
         }
+
+        private async Task<string> FindDevicesFromArgsAsync(JsonElement root) =>
+            await FindDevicesJsonAsync(TryGetString(root, "query") ?? string.Empty);
+
+        private async Task<string> FindActuatorsFromArgsAsync(JsonElement root)
+        {
+            var deviceId = await ResolveDeviceIdAsync(root);
+            return await FindActuatorsJsonAsync(deviceId, TryGetString(root, "query") ?? string.Empty);
+        }
+
+        private async Task<string> GetAlertSummaryFromArgsAsync(JsonElement root) =>
+            await GetAlertSummaryJsonAsync(TryGetInt(root, "deviceId"));
+
+        private async Task<string> GetSensorReadingSummaryFromArgsAsync(JsonElement root)
+        {
+            var deviceId = await ResolveDeviceIdAsync(root);
+            var hours = Math.Clamp(TryGetInt(root, "hours") ?? 24, 1, 168);
+            return await GetSensorReadingSummaryJsonAsync(deviceId, hours, TryGetInt(root, "sensorId"));
+        }
+
+        private async Task<string> GetOperationalSnapshotFromArgsAsync(JsonElement root) =>
+            await GetOperationalSnapshotJsonAsync(TryGetInt(root, "deviceId"));
 
         private async Task<string> SearchDocumentationFromArgsAsync(JsonElement root)
         {

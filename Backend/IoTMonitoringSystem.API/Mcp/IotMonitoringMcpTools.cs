@@ -74,5 +74,26 @@ namespace IoTMonitoringSystem.API.Mcp
             [Description("Search query for project docs")] string query,
             CancellationToken cancellationToken) =>
             _tools.SearchDocumentationJsonAsync(query, cancellationToken);
+
+        [McpServerTool(Name = "get_alert_summary")]
+        [Description("Summary of active alerts with counts by severity.")]
+        public Task<string> GetAlertSummary(
+            [Description("Optional device ID filter")] int? deviceId,
+            CancellationToken cancellationToken) =>
+            _tools.GetAlertSummaryJsonAsync(deviceId, cancellationToken);
+
+        [McpServerTool(Name = "get_operational_snapshot")]
+        [Description("Correlated MQTT health, offline devices, and alert counts.")]
+        public Task<string> GetOperationalSnapshot(
+            [Description("Optional focus device ID")] int? deviceId,
+            CancellationToken cancellationToken) =>
+            _tools.GetOperationalSnapshotJsonAsync(deviceId, cancellationToken);
+
+        [McpServerTool(Name = "find_devices")]
+        [Description("Search devices by name, location, or type.")]
+        public Task<string> FindDevices(
+            [Description("Search query; empty lists all")] string query,
+            CancellationToken cancellationToken) =>
+            _tools.FindDevicesJsonAsync(query, cancellationToken);
     }
 }

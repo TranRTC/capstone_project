@@ -23,6 +23,9 @@ namespace IoTMonitoringSystem.Infrastructure.Data
         public DbSet<User> Users { get; set; }
         public DbSet<AgentInsight> AgentInsights { get; set; }
         public DbSet<AgentActionProposal> AgentActionProposals { get; set; }
+        public DbSet<AgentAuditLog> AgentAuditLogs { get; set; }
+        public DbSet<AgentChatSession> AgentChatSessions { get; set; }
+        public DbSet<AgentChatMessage> AgentChatMessages { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -159,6 +162,24 @@ namespace IoTMonitoringSystem.Infrastructure.Data
 
             modelBuilder.Entity<AgentActionProposal>()
                 .HasIndex(p => new { p.Status, p.ExpiresAt });
+
+            modelBuilder.Entity<AgentAuditLog>()
+                .HasIndex(l => new { l.EventType, l.CreatedAt });
+
+            modelBuilder.Entity<AgentAuditLog>()
+                .HasIndex(l => l.Username);
+
+            modelBuilder.Entity<AgentChatSession>()
+                .HasIndex(s => new { s.Username, s.UpdatedAt });
+
+            modelBuilder.Entity<AgentChatMessage>()
+                .HasOne(m => m.Session)
+                .WithMany(s => s.Messages)
+                .HasForeignKey(m => m.AgentChatSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<AgentChatMessage>()
+                .HasIndex(m => new { m.AgentChatSessionId, m.CreatedAt });
         }
     }
 }

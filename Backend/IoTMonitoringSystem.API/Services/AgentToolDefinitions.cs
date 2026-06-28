@@ -88,6 +88,67 @@ namespace IoTMonitoringSystem.API.Services
                 },
                 new LlmToolDefinition
                 {
+                    Name = "find_devices",
+                    Description = "Search devices by name, location, type, or ID. Leave query empty to list all.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new { query = new { type = "string", description = "Search text" } }
+                    }
+                },
+                new LlmToolDefinition
+                {
+                    Name = "find_actuators",
+                    Description = "Search actuators on a device by name or ID.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            deviceId = new { type = "integer" },
+                            query = new { type = "string" }
+                        },
+                        required = new[] { "deviceId" }
+                    }
+                },
+                new LlmToolDefinition
+                {
+                    Name = "get_alert_summary",
+                    Description = "Summary of active alerts with counts by severity and recent items. Optional deviceId filter.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new { deviceId = new { type = "integer" } }
+                    }
+                },
+                new LlmToolDefinition
+                {
+                    Name = "get_sensor_reading_summary",
+                    Description = "Min/max/average/latest sensor readings for a device over the last N hours.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            deviceId = new { type = "integer" },
+                            hours = new { type = "integer", description = "1-168, default 24" },
+                            sensorId = new { type = "integer" }
+                        },
+                        required = new[] { "deviceId" }
+                    }
+                },
+                new LlmToolDefinition
+                {
+                    Name = "get_operational_snapshot",
+                    Description = "Correlated MQTT health, offline devices, and active alert counts. Optional focus deviceId.",
+                    ParametersSchema = new
+                    {
+                        type = "object",
+                        properties = new { deviceId = new { type = "integer" } }
+                    }
+                },
+                new LlmToolDefinition
+                {
                     Name = "search_documentation",
                     Description = "Search project documentation (README, user manual, API docs, deployment guide) for setup, MQTT, troubleshooting, and how-to questions.",
                     ParametersSchema = new

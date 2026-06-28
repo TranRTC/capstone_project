@@ -158,6 +158,144 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
                     b.ToTable("AgentActionProposals");
                 });
 
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentAuditLog", b =>
+                {
+                    b.Property<long>("AgentAuditLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AgentAuditLogId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DetailsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<long?>("RelatedAlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("RelatedDeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("SessionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ToolName")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("UserRole")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("AgentAuditLogId");
+
+                    b.HasIndex("Username");
+
+                    b.HasIndex("EventType", "CreatedAt");
+
+                    b.ToTable("AgentAuditLogs");
+                });
+
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentChatMessage", b =>
+                {
+                    b.Property<long>("AgentChatMessageId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AgentChatMessageId"));
+
+                    b.Property<long>("AgentChatSessionId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DataAsOfUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ToolsUsedJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("AgentChatMessageId");
+
+                    b.HasIndex("AgentChatSessionId", "CreatedAt");
+
+                    b.ToTable("AgentChatMessages");
+                });
+
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentChatSession", b =>
+                {
+                    b.Property<long>("AgentChatSessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("AgentChatSessionId"));
+
+                    b.Property<long?>("ContextAlertId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int?>("ContextDeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContextRoute")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("AgentChatSessionId");
+
+                    b.HasIndex("Username", "UpdatedAt");
+
+                    b.ToTable("AgentChatSessions");
+                });
+
             modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.Actuator", b =>
                 {
                     b.Property<int>("ActuatorId")
@@ -743,6 +881,17 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentChatMessage", b =>
+                {
+                    b.HasOne("IoTMonitoringSystem.Core.Entities.AgentChatSession", "Session")
+                        .WithMany("Messages")
+                        .HasForeignKey("AgentChatSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Session");
+                });
+
             modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.Actuator", b =>
                 {
                     b.HasOne("IoTMonitoringSystem.Core.Entities.Device", "Device")
@@ -883,6 +1032,11 @@ namespace IoTMonitoringSystem.Infrastructure.Migrations
                     b.Navigation("Device");
 
                     b.Navigation("Sensor");
+                });
+
+            modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.AgentChatSession", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("IoTMonitoringSystem.Core.Entities.Actuator", b =>

@@ -1,6 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, Typography, Button, Box, Chip, Divider } from '@mui/material';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Box,
+  Divider,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
 import {
   Dashboard as DashboardIcon,
   Devices as DevicesIcon,
@@ -20,6 +32,8 @@ const Navigation: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = authService.getCurrentUser();
+  const [accountAnchor, setAccountAnchor] = useState<null | HTMLElement>(null);
+  const accountMenuOpen = Boolean(accountAnchor);
 
   const isAdmin = currentUser?.role === 'Admin';
 
@@ -36,17 +50,18 @@ const Navigation: React.FC = () => {
   ].filter((item) => !item.adminOnly || isAdmin);
 
   const handleLogout = () => {
+    setAccountAnchor(null);
     authService.logout();
     navigate('/login', { replace: true });
   };
 
   return (
     <AppBar position="static">
-      <Toolbar sx={{ py: 0.5 }}>
+      <Toolbar sx={{ py: 0.5, gap: 0.5, flexWrap: 'wrap' }}>
         <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: '-0.02em' }}>
           IoT Dashboard
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
           {navItems.map((item) => {
             const active = location.pathname === item.path || (item.path === '/dashboard' && location.pathname === '/');
             return (
@@ -70,23 +85,43 @@ const Navigation: React.FC = () => {
           <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
 
           {currentUser && (
-            <Chip
-              icon={<PersonIcon />}
-              label={`${currentUser.username} (${currentUser.role})`}
-              size="small"
-              sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.4)', mr: 1 }}
-              variant="outlined"
-            />
+            <>
+              <IconButton
+                color="inherit"
+                onClick={(e) => setAccountAnchor(e.currentTarget)}
+                aria-label="Account menu"
+                aria-controls={accountMenuOpen ? 'account-menu' : undefined}
+                aria-haspopup="true"
+                aria-expanded={accountMenuOpen ? 'true' : undefined}
+                sx={{ color: 'text.secondary' }}
+              >
+                <PersonIcon />
+              </IconButton>
+              <Menu
+                id="account-menu"
+                anchorEl={accountAnchor}
+                open={accountMenuOpen}
+                onClose={() => setAccountAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                <MenuItem disabled sx={{ opacity: 1 }}>
+                  <ListItemText
+                    primary={currentUser.username}
+                    secondary={currentUser.role}
+                    primaryTypographyProps={{ fontWeight: 600 }}
+                  />
+                </MenuItem>
+                <Divider />
+                <MenuItem onClick={handleLogout}>
+                  <ListItemIcon>
+                    <LogoutIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText>Logout</ListItemText>
+                </MenuItem>
+              </Menu>
+            </>
           )}
-
-          <Button
-            color="inherit"
-            startIcon={<LogoutIcon />}
-            onClick={handleLogout}
-            sx={{ color: 'text.secondary' }}
-          >
-            Logout
-          </Button>
         </Box>
       </Toolbar>
     </AppBar>

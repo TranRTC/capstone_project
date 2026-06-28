@@ -49,6 +49,8 @@ builder.Services.AddScoped<IDeviceConfigurationRepository, DeviceConfigurationRe
 builder.Services.AddScoped<IActuatorRepository, ActuatorRepository>();
 builder.Services.AddScoped<IAgentInsightRepository, AgentInsightRepository>();
 builder.Services.AddScoped<IAgentActionProposalRepository, AgentActionProposalRepository>();
+builder.Services.AddScoped<IAgentAuditRepository, AgentAuditRepository>();
+builder.Services.AddScoped<IAgentChatSessionRepository, AgentChatSessionRepository>();
 
 // Notification Service (SignalR)
 builder.Services.AddScoped<INotificationService, SignalRNotificationService>();
@@ -73,6 +75,9 @@ builder.Services.AddSingleton<IDocumentationSearchService, DocumentationSearchSe
 builder.Services.AddScoped<IIotAgentToolService, IotAgentToolService>();
 builder.Services.AddScoped<AgentToolExecutor>();
 builder.Services.AddScoped<AgentActionExecutor>();
+builder.Services.AddScoped<IAgentAuditService, AgentAuditService>();
+builder.Services.AddScoped<IAgentChatSessionService, AgentChatSessionService>();
+builder.Services.AddScoped<AgentIntentRouter>();
 builder.Services.AddScoped<IAgentActionService, AgentActionService>();
 builder.Services.AddScoped<AgentToggleIntentHandler>();
 builder.Services.AddScoped<IAgentService, AgentService>();

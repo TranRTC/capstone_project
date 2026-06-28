@@ -9,6 +9,10 @@ namespace IoTMonitoringSystem.Core.DTOs
         public string Message { get; set; } = string.Empty;
 
         public List<AgentChatMessageDto>? History { get; set; }
+
+        public long? SessionId { get; set; }
+
+        public AgentChatContextDto? Context { get; set; }
     }
 
     public class AgentChatMessageDto
@@ -26,5 +30,9 @@ namespace IoTMonitoringSystem.Core.DTOs
         public List<string> ToolsUsed { get; set; } = new();
         public List<string> DocSourcesUsed { get; set; } = new();
         public AgentActionProposalDto? PendingAction { get; set; }
+        public long? SessionId { get; set; }
+        public DateTime? DataAsOfUtc { get; set; }
+        public AgentChatContextDto? ContextUsed { get; set; }
+        public bool UsedIntentRouter { get; set; }
     }
 }
